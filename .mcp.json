@@ -11,8 +11,8 @@
       "cwd": "."
     },
     "ast-grep": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/ast-grep/ast-grep-mcp", "ast-grep-server"],
+      "command": "mise",
+      "args": ["x", "--", "uvx", "--python", "3.13", "--from", "git+https://github.com/ast-grep/ast-grep-mcp", "ast-grep-server"],
       "cwd": "."
     }
   }

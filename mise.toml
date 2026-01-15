@@ -2,7 +2,8 @@
 # SSoT for runtime versions and environment
 
 [env]
-GH_TOKEN = "{{ exec(command='cat ~/.claude/.secrets/gh-token-terrylica') }}"
+GH_TOKEN = "{{ read_file(path=env.HOME ~ '/.claude/.secrets/gh-token-terrylica') | trim }}"
+GITHUB_TOKEN = "{{ read_file(path=env.HOME ~ '/.claude/.secrets/gh-token-terrylica') | trim }}"
 LOG_DIR = "{{config_root}}/logs"
 ENV = "dev"
 
