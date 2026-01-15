@@ -1,0 +1,34 @@
+# Trading Fitness - mise configuration
+# SSoT for runtime versions and environment
+
+[env]
+GH_TOKEN = "{{ exec(command='cat ~/.claude/.secrets/gh-token-terrylica') }}"
+LOG_DIR = "{{config_root}}/logs"
+ENV = "dev"
+
+[tools]
+python = "3.12"    # SSoT-OK: mise manages runtime versions
+rust = "stable"    # SSoT-OK: mise manages runtime versions
+node = "22"        # SSoT-OK: mise manages runtime versions
+bun = "latest"     # SSoT-OK: mise manages runtime versions
+uv = "latest"      # SSoT-OK: mise manages runtime versions
+"cargo:ast-grep" = "latest"  # SSoT-OK: structural code search
+
+[tasks.lint]
+description = "Lint all packages"
+run = "cd packages/ith-python && uv run ruff check --fix"
+
+[tasks.test]
+description = "Test all packages"
+run = "cd packages/ith-python && uv run pytest"
+
+[tasks.analyze]
+description = "Run ITH analysis"
+run = "cd packages/ith-python && uv run python -m ith_python.ith"
+
+[tasks.affected]
+description = "List affected packages"
+run = "bash scripts/affected.sh list"
+
+[tasks."test:affected"]
+run = "bash scripts/affected.sh test"

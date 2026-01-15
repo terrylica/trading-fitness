@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "mise": {
+      "command": "mise",
+      "args": ["mcp"],
+      "env": {"MISE_EXPERIMENTAL": "1"}
+    },
+    "code-search": {
+      "command": "ck",
+      "args": ["--serve"],
+      "cwd": "."
+    },
+    "ast-grep": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/ast-grep/ast-grep-mcp", "ast-grep-server"],
+      "cwd": "."
+    }
+  }
+}

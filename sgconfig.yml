@@ -1,0 +1,20 @@
+# ast-grep rule configuration
+# Structural code search and transformation
+
+ruleDirs:
+  - rules/general
+  - rules/python
+  - rules/rust
+  - rules/typescript
+
+testConfigs:
+  - testDir: tests/rules
+
+utilDirs:
+  - utils
+
+languageGlobs:
+  typescript: ['*.ts', '*.tsx']
+  javascript: ['*.js', '*.jsx', '*.mjs']
+  python: ['*.py', '*.pyi']
+  html: ['*.vue', '*.astro', '*.svelte']

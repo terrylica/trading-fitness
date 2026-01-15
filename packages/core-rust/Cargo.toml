@@ -1,0 +1,10 @@
+[package]
+name = "core-rust"
+version = "0.1.0"
+edition = "2024"
+publish = ["crates-io"]
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["json"] }

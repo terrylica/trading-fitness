@@ -1,0 +1,28 @@
+# Artifacts (regenerable)
+artifacts/**/*
+!artifacts/.gitkeep
+
+# Logs
+logs/**/*
+!logs/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Rust
+target/
+
+# Node/Bun
+node_modules/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
