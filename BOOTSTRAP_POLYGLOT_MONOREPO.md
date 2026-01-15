@@ -20,11 +20,13 @@ command -v bun && bun --version
 ```
 
 If any tool is missing, install via mise:
+
 ```bash
 mise use -g rust@latest python@3.12 node@lts bun@latest uv@latest
 ```
 
 Create project root and initialize git:
+
 ```bash
 mkdir -p ~/projects/hft-monorepo && cd ~/projects/hft-monorepo
 git init
@@ -40,9 +42,15 @@ Create the canonical directory structure for a polyglot HFT monorepo:
 hft-monorepo/
 ├── CLAUDE.md                    # Hub: Link Farm root (this file)
 ├── mise.toml                    # Orchestrator: tools + tasks
+├── sgconfig.yml                 # ast-grep rules configuration
 ├── .mise/                       # Mise local config
 ├── .mcp.json                    # MCP server configuration
 ├── targets.json                 # Affected-target manifest
+├── rules/                       # ast-grep rule directories
+│   ├── general/                 # Cross-language patterns
+│   ├── python/                  # Python-specific rules
+│   ├── rust/                    # Rust-specific rules
+│   └── typescript/              # TypeScript-specific rules
 ├── docs/                        # Deep documentation (spoke)
 │   ├── ARCHITECTURE.md
 │   ├── LOGGING.md
@@ -84,8 +92,9 @@ hft-monorepo/
 ```
 
 Execute creation:
+
 ```bash
-mkdir -p docs skills/{python,rust,bun} packages/{core-python/src,core-rust/src,core-bun/src,shared-types/schemas} services/{data-ingestion,strategy-engine,execution-gateway} scripts logs
+mkdir -p docs skills/{python,rust,bun} packages/{core-python/src,core-rust/src,core-bun/src,shared-types/schemas} services/{data-ingestion,strategy-engine,execution-gateway} scripts logs rules/{general,python,rust,typescript}
 touch .gitignore
 ```
 
@@ -95,19 +104,19 @@ touch .gitignore
 
 Create the root `CLAUDE.md` as the Link Farm hub with Progressive Disclosure:
 
-```markdown
+````markdown
 # HFT Polyglot Monorepo
 
 > **Navigation**: This file is the single entry point. Each section links to deeper documentation. Child directories contain their own `CLAUDE.md` files that Claude loads on-demand.
 
 ## Quick Reference
 
-| Action | Command |
-|--------|---------|
-| Build affected | `mise run build:affected` |
-| Test affected | `mise run test:affected` |
-| Lint all | `mise run lint` |
-| Search code | Use `ck` MCP tool: `semantic_search("query")` |
+| Action         | Command                                       |
+| -------------- | --------------------------------------------- |
+| Build affected | `mise run build:affected`                     |
+| Test affected  | `mise run test:affected`                      |
+| Lint all       | `mise run lint`                               |
+| Search code    | Use `ck` MCP tool: `semantic_search("query")` |
 
 ## Architecture Overview
 
@@ -119,29 +128,40 @@ Create the root `CLAUDE.md` as the Link Farm hub with Progressive Disclosure:
 
 ## Package Map
 
-| Package | Language | Purpose | Entry |
-|---------|----------|---------|-------|
-| `core-python` | Python | Shared utilities, data models | [packages/core-python/CLAUDE.md](packages/core-python/CLAUDE.md) |
-| `core-rust` | Rust | Performance-critical compute | [packages/core-rust/CLAUDE.md](packages/core-rust/CLAUDE.md) |
-| `core-bun` | Bun/TS | Async I/O, HTTP APIs | [packages/core-bun/CLAUDE.md](packages/core-bun/CLAUDE.md) |
-| `shared-types` | Multi | Cross-language schemas | [packages/shared-types/CLAUDE.md](packages/shared-types/CLAUDE.md) |
+| Package        | Language | Purpose                       | Entry                                                              |
+| -------------- | -------- | ----------------------------- | ------------------------------------------------------------------ |
+| `core-python`  | Python   | Shared utilities, data models | [packages/core-python/CLAUDE.md](packages/core-python/CLAUDE.md)   |
+| `core-rust`    | Rust     | Performance-critical compute  | [packages/core-rust/CLAUDE.md](packages/core-rust/CLAUDE.md)       |
+| `core-bun`     | Bun/TS   | Async I/O, HTTP APIs          | [packages/core-bun/CLAUDE.md](packages/core-bun/CLAUDE.md)         |
+| `shared-types` | Multi    | Cross-language schemas        | [packages/shared-types/CLAUDE.md](packages/shared-types/CLAUDE.md) |
 
 ## Services
 
-| Service | Owner Package | Purpose |
-|---------|---------------|---------|
-| `data-ingestion` | core-python | Market data feeds |
-| `strategy-engine` | core-rust | Signal generation |
-| `execution-gateway` | core-bun | Order routing |
+| Service             | Owner Package | Purpose           |
+| ------------------- | ------------- | ----------------- |
+| `data-ingestion`    | core-python   | Market data feeds |
+| `strategy-engine`   | core-rust     | Signal generation |
+| `execution-gateway` | core-bun      | Order routing     |
 
 → Service docs in respective `services/*/CLAUDE.md`
 
 ## Logging Contract
 
 All packages emit **NDJSON to `logs/*.jsonl`** with schema:
+
 ```json
-{"ts":"ISO8601","level":"INFO","msg":"...","component":"pkg","env":"dev","pid":123,"trace_id":"uuid"}
+{
+  "ts": "ISO8601",
+  "level": "INFO",
+  "msg": "...",
+  "component": "pkg",
+  "env": "dev",
+  "pid": 123,
+  "trace_id": "uuid"
+}
 ```
+````
+
 → Deep dive: [docs/LOGGING.md](docs/LOGGING.md)
 
 ## Workflow Protocol
@@ -161,17 +181,18 @@ When modifying code in this repo:
 ## Skills Reference
 
 Language-specific patterns and idioms:
+
 - [skills/python/SKILL.md](skills/python/SKILL.md) — uv, loguru, async patterns
 - [skills/rust/SKILL.md](skills/rust/SKILL.md) — cargo, tracing, error handling
 - [skills/bun/SKILL.md](skills/bun/SKILL.md) — bun, pino, Zod validation
 
 ## MCP Tools Available
 
-| Server | Tools | Use For |
-|--------|-------|---------|
-| `mise` | `mise_tools`, `mise_tasks`, `mise_env` | Project context |
-| `ck` | `semantic_search`, `hybrid_search`, `reindex` | Code search |
-| `shell` | Execute allowed commands | Git, affected detection |
+| Server  | Tools                                         | Use For                 |
+| ------- | --------------------------------------------- | ----------------------- |
+| `mise`  | `mise_tools`, `mise_tasks`, `mise_env`        | Project context         |
+| `ck`    | `semantic_search`, `hybrid_search`, `reindex` | Code search             |
+| `shell` | Execute allowed commands                      | Git, affected detection |
 
 ## Do NOT
 
@@ -180,7 +201,8 @@ Language-specific patterns and idioms:
 - Log secrets, PII, or credentials
 - Break the NDJSON schema contract
 - Commit without running affected tests
-```
+
+````
 
 ---
 
@@ -214,21 +236,23 @@ Language-specific patterns and idioms:
 
 ## Dependency Graph
 
-```
+````
+
 shared-types (schemas)
-       ↓
-  ┌────┴────┐
-  ↓         ↓
+↓
+┌────┴────┐
+↓ ↓
 core-python core-rust
-  ↓         ↓
-  └────┬────┘
-       ↓
-   core-bun (orchestrates)
-       ↓
-  ┌────┼────┐
-  ↓    ↓    ↓
+↓ ↓
+└────┬────┘
+↓
+core-bun (orchestrates)
+↓
+┌────┼────┐
+↓ ↓ ↓
 data strategy execution
-```
+
+````
 
 ## Cross-Language Communication
 
@@ -242,8 +266,9 @@ Mise enforces correct ordering via task dependencies:
 ```toml
 [tasks."build:all"]
 depends = ["build:shared-types", "build:core-python", "build:core-rust", "build:core-bun"]
-```
-```
+````
+
+````
 
 ### docs/LOGGING.md
 
@@ -313,9 +338,10 @@ logger.add(
     retention="7 days",
     compression="gz"
 )
-```
+````
 
 ### Rust (tracing + tracing-subscriber)
+
 ```rust
 use tracing_subscriber::{fmt, prelude::*};
 
@@ -325,31 +351,34 @@ tracing_subscriber::registry()
 ```
 
 ### Bun/Node (pino)
+
 ```typescript
-import pino from 'pino';
+import pino from "pino";
 
 const logger = pino({
-  level: 'info',
+  level: "info",
   timestamp: pino.stdTimeFunctions.isoTime,
   formatters: {
     level: (label) => ({ level: label.toUpperCase() }),
   },
   transport: {
-    target: 'pino/file',
-    options: { destination: './logs/core-bun.jsonl' }
-  }
+    target: "pino/file",
+    options: { destination: "./logs/core-bun.jsonl" },
+  },
 });
 ```
 
 ## Anti-Patterns
 
 ❌ **Never log**:
+
 - Passwords, API keys, tokens
 - PII (emails, names, addresses)
 - Full request/response bodies (summarize instead)
 - Stack traces in production INFO logs (use ERROR level)
 
 ❌ **Never allow logging to crash the app**:
+
 ```python
 # WRONG
 logger.info(f"User: {user}")  # Crashes if user is None
@@ -357,7 +386,8 @@ logger.info(f"User: {user}")  # Crashes if user is None
 # RIGHT
 logger.info("User action", user_id=getattr(user, 'id', 'unknown'))
 ```
-```
+
+````
 
 ### docs/TESTING.md
 
@@ -372,9 +402,10 @@ Run tests only for packages changed since `origin/main`:
 
 ```bash
 mise run test:affected
-```
+````
 
 This executes `scripts/affected.sh` which:
+
 1. Gets changed files via `git diff --name-only origin/main`
 2. Maps files to packages via `targets.json`
 3. Includes transitive dependents
@@ -382,19 +413,19 @@ This executes `scripts/affected.sh` which:
 
 ## Test Commands by Language
 
-| Package | Command | Framework |
-|---------|---------|-----------|
-| core-python | `uv run pytest` | pytest |
-| core-rust | `cargo test` | built-in |
-| core-bun | `bun test` | bun:test |
+| Package     | Command         | Framework |
+| ----------- | --------------- | --------- |
+| core-python | `uv run pytest` | pytest    |
+| core-rust   | `cargo test`    | built-in  |
+| core-bun    | `bun test`      | bun:test  |
 
 ## Coverage Requirements
 
-| Type | Threshold | Enforcement |
-|------|-----------|-------------|
-| Line | 80% | CI gate |
-| Branch | 70% | CI gate |
-| Critical paths | 100% | Code review |
+| Type           | Threshold | Enforcement |
+| -------------- | --------- | ----------- |
+| Line           | 80%       | CI gate     |
+| Branch         | 70%       | CI gate     |
+| Critical paths | 100%      | Code review |
 
 ## Test Naming
 
@@ -403,7 +434,8 @@ test_{unit_under_test}_{scenario}_{expected_outcome}
 ```
 
 Example: `test_order_submit_insufficient_balance_returns_error`
-```
+
+````
 
 ### docs/WORKFLOWS.md
 
@@ -414,49 +446,53 @@ Example: `test_order_submit_insufficient_balance_returns_error`
 
 ## Standard Change Workflow
 
-```
+````
+
 ┌─────────────────────────────────────────────────────────────┐
-│ 1. EXPLORE                                                  │
-│    Read CLAUDE.md in target directory                       │
-│    Use semantic_search MCP to find related code             │
+│ 1. EXPLORE │
+│ Read CLAUDE.md in target directory │
+│ Use semantic_search MCP to find related code │
 └─────────────────────────┬───────────────────────────────────┘
-                          ↓
+↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. PLAN                                                     │
-│    For complex changes: ultrathink                          │
-│    State approach before any edits                          │
-│    Identify affected packages via: mise run affected        │
+│ 2. PLAN │
+│ For complex changes: ultrathink │
+│ State approach before any edits │
+│ Identify affected packages via: mise run affected │
 └─────────────────────────┬───────────────────────────────────┘
-                          ↓
+↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. IMPLEMENT                                                │
-│    Edit files, one logical change at a time                 │
-│    Run mise run lint after each file                        │
-│    Follow language skill guide                              │
+│ 3. IMPLEMENT │
+│ Edit files, one logical change at a time │
+│ Run mise run lint after each file │
+│ Follow language skill guide │
 └─────────────────────────┬───────────────────────────────────┘
-                          ↓
+↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. VERIFY                                                   │
-│    Run mise run test:affected                               │
-│    Check logs emit to logs/*.jsonl                          │
-│    Confirm NDJSON schema compliance                         │
+│ 4. VERIFY │
+│ Run mise run test:affected │
+│ Check logs emit to logs/\*.jsonl │
+│ Confirm NDJSON schema compliance │
 └─────────────────────────┬───────────────────────────────────┘
-                          ↓
+↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 5. COMMIT                                                   │
-│    Conventional commit format                               │
-│    Reference affected packages in scope                     │
+│ 5. COMMIT │
+│ Conventional commit format │
+│ Reference affected packages in scope │
 └─────────────────────────────────────────────────────────────┘
+
 ```
 
 ## Commit Message Format
 
 ```
+
 <type>(<scope>): <description>
 
 [optional body]
 
 [optional footer]
+
 ```
 
 Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
@@ -464,6 +500,7 @@ Scope: Package name (`core-python`, `core-rust`, etc.)
 
 Example:
 ```
+
 feat(core-rust): add order validation module
 
 - Implements balance check before submission
@@ -471,7 +508,9 @@ feat(core-rust): add order validation module
 - Logs validation failures to NDJSON
 
 Affects: core-rust, execution-gateway
+
 ```
+
 ```
 
 ---
@@ -480,19 +519,19 @@ Affects: core-rust, execution-gateway
 
 ### skills/python/SKILL.md
 
-```markdown
+````markdown
 # Python Skill Guide
 
 ← Back to [CLAUDE.md](../../CLAUDE.md)
 
 ## Toolchain
 
-| Tool | Purpose | Config |
-|------|---------|--------|
-| `uv` | Package management | `pyproject.toml` |
-| `ruff` | Linting + formatting | `ruff.toml` |
-| `pytest` | Testing | `pytest.ini` |
-| `loguru` | Logging | In-code config |
+| Tool     | Purpose              | Config           |
+| -------- | -------------------- | ---------------- |
+| `uv`     | Package management   | `pyproject.toml` |
+| `ruff`   | Linting + formatting | `ruff.toml`      |
+| `pytest` | Testing              | `pytest.ini`     |
+| `loguru` | Logging              | In-code config   |
 
 ## Project Setup Pattern
 
@@ -515,6 +554,7 @@ dev-dependencies = [
     "ruff>=0.4",
 ]
 ```
+````
 
 ## Code Style
 
@@ -534,16 +574,16 @@ import os
 
 def setup_logging(component: str, env: str = "dev") -> None:
     """Configure NDJSON logging per repo contract."""
-    
+
     # Determine log directory
     if env == "dev":
         log_dir = Path(__file__).parents[3] / "logs"
     else:
         log_dir = Path(user_log_dir("hft-monorepo"))
-    
+
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{component}.jsonl"
-    
+
     # Remove default and add NDJSON handler
     logger.remove()
     logger.add(
@@ -554,7 +594,7 @@ def setup_logging(component: str, env: str = "dev") -> None:
         compression="gz",
         enqueue=True,  # Thread-safe
     )
-    
+
     # Bind constant fields
     logger.configure(extra={
         "component": component,
@@ -575,15 +615,15 @@ T = TypeVar("T")
 class Result(Generic[T]):
     value: T | None
     error: str | None
-    
+
     @property
     def is_ok(self) -> bool:
         return self.error is None
-    
+
     @classmethod
     def ok(cls, value: T) -> "Result[T]":
         return cls(value=value, error=None)
-    
+
     @classmethod
     def err(cls, error: str) -> "Result[T]":
         return cls(value=None, error=error)
@@ -597,7 +637,8 @@ uv run pytest              # Run tests
 uv run ruff check --fix    # Lint and auto-fix
 uv run ruff format         # Format code
 ```
-```
+
+````
 
 ### skills/rust/SKILL.md
 
@@ -631,7 +672,7 @@ serde_json = "1.0"
 thiserror = "1.0"
 anyhow = "1.0"
 tokio = { version = "1.0", features = ["full"] }
-```
+````
 
 ## Code Style
 
@@ -659,15 +700,15 @@ pub fn setup_logging(component: &str, env: &str) -> anyhow::Result<()> {
             .unwrap_or_else(|| std::env::current_dir().unwrap())
             .join("hft-monorepo/logs")
     };
-    
+
     std::fs::create_dir_all(&log_dir)?;
     let log_file = log_dir.join(format!("{}.jsonl", component));
-    
+
     let file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(log_file)?;
-    
+
     let subscriber = tracing_subscriber::registry()
         .with(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
         .with(
@@ -677,7 +718,7 @@ pub fn setup_logging(component: &str, env: &str) -> anyhow::Result<()> {
                 .with_current_span(false)
                 .flatten_event(true)
         );
-    
+
     tracing::subscriber::set_global_default(subscriber)?;
     Ok(())
 }
@@ -692,10 +733,10 @@ use thiserror::Error;
 pub enum OrderError {
     #[error("insufficient balance: required {required}, available {available}")]
     InsufficientBalance { required: f64, available: f64 },
-    
+
     #[error("invalid symbol: {0}")]
     InvalidSymbol(String),
-    
+
     #[error("network error: {0}")]
     Network(#[from] std::io::Error),
 }
@@ -703,7 +744,7 @@ pub enum OrderError {
 // Usage with tracing
 fn submit_order(order: Order) -> Result<OrderId, OrderError> {
     tracing::info!(order_id = %order.id, symbol = %order.symbol, "submitting order");
-    
+
     if order.amount > balance {
         tracing::warn!(required = order.amount, available = balance, "insufficient balance");
         return Err(OrderError::InsufficientBalance {
@@ -711,7 +752,7 @@ fn submit_order(order: Order) -> Result<OrderId, OrderError> {
             available: balance,
         });
     }
-    
+
     Ok(order.id)
 }
 ```
@@ -724,7 +765,8 @@ cargo test                  # Run tests
 cargo clippy --all-targets  # Lint
 cargo fmt                   # Format
 ```
-```
+
+````
 
 ### skills/bun/SKILL.md
 
@@ -765,7 +807,7 @@ cargo fmt                   # Format
     "@types/bun": "latest"
   }
 }
-```
+````
 
 ## Code Style
 
@@ -778,23 +820,24 @@ cargo fmt                   # Format
 
 ```typescript
 // src/logging.ts
-import pino from 'pino';
-import { mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import pino from "pino";
+import { mkdirSync, existsSync } from "fs";
+import { join, dirname } from "path";
 
-export function setupLogging(component: string, env: string = 'dev') {
-  const logDir = env === 'dev' 
-    ? join(dirname(dirname(import.meta.dir)), 'logs')
-    : join(process.env.HOME || '/tmp', '.local/state/hft-monorepo/logs');
-  
+export function setupLogging(component: string, env: string = "dev") {
+  const logDir =
+    env === "dev"
+      ? join(dirname(dirname(import.meta.dir)), "logs")
+      : join(process.env.HOME || "/tmp", ".local/state/hft-monorepo/logs");
+
   if (!existsSync(logDir)) {
     mkdirSync(logDir, { recursive: true });
   }
-  
+
   const logFile = join(logDir, `${component}.jsonl`);
-  
+
   return pino({
-    level: env === 'dev' ? 'debug' : 'info',
+    level: env === "dev" ? "debug" : "info",
     timestamp: () => `,"ts":"${new Date().toISOString()}"`,
     formatters: {
       level: (label) => ({ level: label.toUpperCase() }),
@@ -805,29 +848,29 @@ export function setupLogging(component: string, env: string = 'dev') {
       pid: process.pid,
     },
     transport: {
-      target: 'pino/file',
-      options: { destination: logFile }
-    }
+      target: "pino/file",
+      options: { destination: logFile },
+    },
   });
 }
 
 // Usage
-const logger = setupLogging('core-bun');
-logger.info({ orderId: '123', symbol: 'BTC-USD' }, 'Order received');
+const logger = setupLogging("core-bun");
+logger.info({ orderId: "123", symbol: "BTC-USD" }, "Order received");
 ```
 
 ## Validation Pattern
 
 ```typescript
-import { z } from 'zod';
+import { z } from "zod";
 
 export const OrderSchema = z.object({
   id: z.string().uuid(),
   symbol: z.string().min(1),
-  side: z.enum(['buy', 'sell']),
+  side: z.enum(["buy", "sell"]),
   amount: z.number().positive(),
   price: z.number().positive().optional(),
-  type: z.enum(['market', 'limit']),
+  type: z.enum(["market", "limit"]),
 });
 
 export type Order = z.infer<typeof OrderSchema>;
@@ -835,12 +878,12 @@ export type Order = z.infer<typeof OrderSchema>;
 // Usage with logging
 function validateOrder(input: unknown, logger: pino.Logger): Order | null {
   const result = OrderSchema.safeParse(input);
-  
+
   if (!result.success) {
-    logger.warn({ errors: result.error.flatten() }, 'Order validation failed');
+    logger.warn({ errors: result.error.flatten() }, "Order validation failed");
     return null;
   }
-  
+
   return result.data;
 }
 ```
@@ -853,7 +896,8 @@ bun test              # Run tests
 bun run lint          # Lint and fix
 bun run build         # Build for production
 ```
-```
+
+````
 
 ---
 
@@ -876,18 +920,20 @@ Shared Python utilities for the HFT monorepo:
 
 ## Structure
 
-```
+````
+
 core-python/
-├── CLAUDE.md          # This file
-├── pyproject.toml     # uv config
+├── CLAUDE.md # This file
+├── pyproject.toml # uv config
 ├── src/
-│   └── core_python/
-│       ├── __init__.py
-│       ├── logging.py     # NDJSON setup
-│       ├── models/        # Pydantic models
-│       └── utils/         # Shared utilities
+│ └── core_python/
+│ ├── **init**.py
+│ ├── logging.py # NDJSON setup
+│ ├── models/ # Pydantic models
+│ └── utils/ # Shared utilities
 └── tests/
-```
+
+````
 
 ## Dependencies
 
@@ -909,18 +955,20 @@ cd packages/core-python
 uv sync
 uv run pytest
 uv run ruff check --fix
-```
+````
 
 ## Logging
 
 Logs emit to: `{repo_root}/logs/core-python.jsonl`
 
 Initialize in entry points:
+
 ```python
 from core_python.logging import setup_logging
 setup_logging("core-python")
 ```
-```
+
+````
 
 ### packages/core-rust/CLAUDE.md
 
@@ -939,18 +987,20 @@ Performance-critical Rust components:
 
 ## Structure
 
-```
+````
+
 core-rust/
-├── CLAUDE.md          # This file
+├── CLAUDE.md # This file
 ├── Cargo.toml
 ├── src/
-│   ├── lib.rs
-│   ├── logging.rs     # tracing NDJSON setup
-│   ├── matching/      # Order matching
-│   ├── risk/          # Risk calculations
-│   └── signals/       # Signal processing
+│ ├── lib.rs
+│ ├── logging.rs # tracing NDJSON setup
+│ ├── matching/ # Order matching
+│ ├── risk/ # Risk calculations
+│ └── signals/ # Signal processing
 └── tests/
-```
+
+````
 
 ## Dependencies
 
@@ -973,13 +1023,14 @@ cargo build --release
 cargo test
 cargo clippy --all-targets
 cargo fmt
-```
+````
 
 ## Logging
 
 Logs emit to: `{repo_root}/logs/core-rust.jsonl`
 
 Initialize in main/lib:
+
 ```rust
 use core_rust::logging::setup_logging;
 setup_logging("core-rust", "dev").expect("logging init");
@@ -990,7 +1041,8 @@ setup_logging("core-rust", "dev").expect("logging init");
 - Use `#[inline]` for hot-path functions
 - Prefer stack allocation where possible
 - Benchmark with `criterion` before optimizing
-```
+
+````
 
 ### packages/core-bun/CLAUDE.md
 
@@ -1009,19 +1061,21 @@ Async I/O and HTTP APIs:
 
 ## Structure
 
-```
+````
+
 core-bun/
-├── CLAUDE.md          # This file
+├── CLAUDE.md # This file
 ├── package.json
 ├── bunfig.toml
 ├── src/
-│   ├── index.ts
-│   ├── logging.ts     # pino NDJSON setup
-│   ├── api/           # HTTP handlers
-│   ├── ws/            # WebSocket handlers
-│   └── clients/       # External API clients
+│ ├── index.ts
+│ ├── logging.ts # pino NDJSON setup
+│ ├── api/ # HTTP handlers
+│ ├── ws/ # WebSocket handlers
+│ └── clients/ # External API clients
 └── tests/
-```
+
+````
 
 ## Dependencies
 
@@ -1044,18 +1098,20 @@ bun install
 bun test
 bun run lint
 bun run dev
-```
+````
 
 ## Logging
 
 Logs emit to: `{repo_root}/logs/core-bun.jsonl`
 
 Initialize in entry:
+
 ```typescript
-import { setupLogging } from './logging';
-const logger = setupLogging('core-bun');
+import { setupLogging } from "./logging";
+const logger = setupLogging("core-bun");
 ```
-```
+
+````
 
 ### packages/shared-types/CLAUDE.md
 
@@ -1073,18 +1129,20 @@ Cross-language type definitions:
 
 ## Structure
 
-```
+````
+
 shared-types/
 ├── CLAUDE.md
 ├── schemas/
-│   ├── order.schema.json
-│   ├── market.schema.json
-│   └── error.schema.json
-└── generated/         # Auto-generated, do not edit
-    ├── python/
-    ├── rust/
-    └── typescript/
-```
+│ ├── order.schema.json
+│ ├── market.schema.json
+│ └── error.schema.json
+└── generated/ # Auto-generated, do not edit
+├── python/
+├── rust/
+└── typescript/
+
+````
 
 ## Schema Contract
 
@@ -1100,9 +1158,10 @@ Required fields for every schema:
 
 ```bash
 mise run generate:types
-```
+````
 
 This generates:
+
 - Python: Pydantic models via `datamodel-codegen`
 - Rust: Structs via `typify`
 - TypeScript: Zod schemas via `json-schema-to-zod`
@@ -1113,7 +1172,8 @@ This generates:
 2. Run `mise run generate:types`
 3. Commit both schema and generated files
 4. Update downstream packages
-```
+
+````
 
 ---
 
@@ -1173,7 +1233,7 @@ echo "Type generation not yet implemented"
 [tasks.reindex]
 description = "Reindex codebase for semantic search"
 run = "ck index --all"
-```
+````
 
 ### .mcp.json
 
@@ -1198,9 +1258,54 @@ run = "ck index --all"
       "env": {
         "ALLOW_COMMANDS": "mise,git,jq,cargo,uv,bun,cat,ls,grep,head,tail,find"
       }
+    },
+    "ast-grep": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/ast-grep/ast-grep-mcp",
+        "ast-grep-server"
+      ],
+      "cwd": "."
     }
   }
 }
+```
+
+**ast-grep MCP Tools Reference**:
+
+| Tool                   | Purpose                                |
+| ---------------------- | -------------------------------------- |
+| `dump_syntax_tree`     | Visualize AST structure of code        |
+| `test_match_code_rule` | Validate YAML rules before applying    |
+| `find_code`            | Simple pattern-based structural search |
+| `find_code_by_rule`    | Complex YAML rule-based search         |
+
+**Usage**: Ask Claude to "use ast-grep to find..." for structural code searches.
+
+### sgconfig.yml
+
+```yaml
+# ast-grep rule configuration
+# Structural code search and transformation
+
+ruleDirs:
+  - rules/general
+  - rules/python
+  - rules/rust
+  - rules/typescript
+
+testConfigs:
+  - testDir: tests/rules
+
+utilDirs:
+  - utils
+
+languageGlobs:
+  typescript: ["*.ts", "*.tsx"]
+  javascript: ["*.js", "*.jsx", "*.mjs"]
+  python: ["*.py", "*.pyi"]
+  html: ["*.vue", "*.astro", "*.svelte"]
 ```
 
 ### targets.json
@@ -1302,8 +1407,8 @@ get_changed_files() {
 file_to_target() {
     local file="$1"
     jq -r --arg file "$file" '
-        .targets | to_entries[] | 
-        select(.value.path as $p | $file | startswith($p)) | 
+        .targets | to_entries[] |
+        select(.value.path as $p | $file | startswith($p)) |
         .key
     ' "$TARGETS_FILE"
 }
@@ -1321,7 +1426,7 @@ get_dependents() {
 # Collect all affected targets
 get_affected_targets() {
     local -A affected=()
-    
+
     while IFS= read -r file; do
         local target
         target=$(file_to_target "$file")
@@ -1333,7 +1438,7 @@ get_affected_targets() {
             done < <(get_dependents "$target")
         fi
     done < <(get_changed_files)
-    
+
     printf '%s\n' "${!affected[@]}" | sort
 }
 
