@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Phase 2: Run semantic-release (version bump + changelog)"
-#MISE depends=["release:preflight"]
+# Note: No dependency on preflight - release:full handles the prerequisite chain
 set -euo pipefail
 
 echo "═══════════════════════════════════════════════════════════"
