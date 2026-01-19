@@ -114,16 +114,32 @@ logger.add(
 
 
 class BearIthConfig(NamedTuple):
-    """Configuration for Bear ITH (Short Position) analysis."""
+    """Configuration for Bear ITH (Short Position) analysis.
+
+    Supports two modes:
+    1. Point-based: Set analysis_n_points (recommended for feature engineering)
+    2. Date-based: Set date_initiate/date_conclude (legacy)
+
+    When analysis_n_points is set, it's used for epoch bounds calculation.
+    """
 
     delete_everything: bool = False
     output_dir: Path = get_synth_bear_ithes_dir()
     TMAER_dynamically_determined_by: str = "mru"  # max runup
     TMAER: float = 0.05
+
+    # Point-based configuration (preferred for time-agnostic analysis)
+    analysis_n_points: int | None = None  # If set, used for epoch bounds
+
+    # Date-based configuration (legacy, for backward compatibility)
     date_initiate: str = "2020-01-30"
     date_conclude: str = "2023-07-25"
+
+    # Epoch bounds
     bear_epochs_lower_bound: int = 10
     bear_epochs_upper_bound: int = 100000
+
+    # Fitness criteria
     sr_lower_bound: float = -9.9  # Negative for bear markets
     sr_upper_bound: float = -0.5  # Negative for bear markets
     aggcv_low_bound: float = 0
@@ -137,17 +153,27 @@ class BearSyntheticNavParams(NamedTuple):
 
     Uses stronger negative drift than bull's positive drift because
     multiplicative returns require larger drift to overcome volatility.
+
+    Supports two generation modes:
+    1. Point-based (recommended): Set n_points, dates auto-generated
+    2. Date-based (legacy): Set start_date/end_date
+
+    When n_points is set, it takes precedence over date range.
     """
 
+    # Point-based mode (preferred for time-agnostic analysis)
+    n_points: int | None = None  # If set, generates exactly this many points
+
+    # Date-based mode (legacy, for backward compatibility)
     start_date: str = "2020-01-30"
     end_date: str = "2023-07-25"
-    # Stronger negative drift for reliable bear market (-0.1% daily)
-    avg_daily_return: float = -0.001
-    # Slightly lower volatility to ensure consistent decline
-    daily_return_volatility: float = 0.008
-    # Same df as bull (5) for symmetric distribution
-    df: int = 5
-    # Same probability as bull's drawdown_prob for symmetric behavior
+
+    # Return characteristics
+    avg_period_return: float = -0.001  # Stronger negative drift for reliable bear market
+    period_return_volatility: float = 0.008  # Slightly lower volatility
+    df: int = 5  # Same df as bull for symmetric distribution
+
+    # Rally parameters (symmetric with bull's drawdown_prob)
     rally_prob: float = 0.05
     rally_magnitude_low: float = 0.001
     rally_magnitude_high: float = 0.003
@@ -288,23 +314,34 @@ def generate_synthetic_bear_nav(params: BearSyntheticNavParams):
 
     Uses MULTIPLICATIVE returns (cumprod) to guarantee NAV stays positive.
     This mirrors the bull generator but with negative drift.
-    """
-    dates = pd.date_range(params.start_date, params.end_date)
 
-    # Generate daily returns using t-distribution
-    daily_returns = stats.t.rvs(
+    If params.n_points is set, generates exactly that many points.
+    Otherwise, uses start_date/end_date for backward compatibility.
+    """
+    if params.n_points is not None:
+        # Point-based mode: generate fixed number of points
+        n = params.n_points
+        # Create dummy dates starting from a fixed base (for plotting compatibility)
+        dates = pd.date_range(start="2020-01-01", periods=n, freq="D")
+    else:
+        # Date-based mode (legacy)
+        dates = pd.date_range(params.start_date, params.end_date)
+        n = len(dates)
+
+    # Generate period returns using t-distribution
+    period_returns = stats.t.rvs(
         params.df,
-        loc=params.avg_daily_return,
-        scale=params.daily_return_volatility,
-        size=len(dates),
+        loc=params.avg_period_return,
+        scale=params.period_return_volatility,
+        size=n,
     )
 
     # Add dead cat bounces (rallies in bear market)
     rally = False
-    for i in range(len(dates)):
+    for i in range(n):
         if rally:
             # Rally adds positive return (price goes up temporarily)
-            daily_returns[i] += np.random.uniform(
+            period_returns[i] += np.random.uniform(
                 params.rally_magnitude_low, params.rally_magnitude_high
             )
             if np.random.rand() < params.rally_recovery_prob:
@@ -315,8 +352,8 @@ def generate_synthetic_bear_nav(params: BearSyntheticNavParams):
     # Use MULTIPLICATIVE returns: NAV = cumprod(1 + returns)
     # This guarantees NAV stays positive (unlike additive cumsum)
     # Clamp returns to prevent NAV going negative (returns > -100%)
-    daily_returns = np.clip(daily_returns, -0.99, None)
-    walk = np.cumprod(1 + daily_returns)
+    period_returns = np.clip(period_returns, -0.99, None)
+    walk = np.cumprod(1 + period_returns)
 
     nav = pd.DataFrame(data=walk, index=dates, columns=["NAV"])
     nav.index.name = "Date"
@@ -362,6 +399,31 @@ def _sharpe_ratio_helper(
     return mean_diff / std_dev
 
 
+def sharpe_ratio(
+    returns: np.ndarray,
+    periods_per_year: float,
+    rf: float = 0.0,
+) -> float:
+    """Calculate annualized Sharpe ratio with explicit periods.
+
+    This is the time-agnostic API. For any data frequency, caller specifies
+    the number of periods per year directly.
+
+    Args:
+        returns: Array of periodic returns
+        periods_per_year: Number of data points per year
+            - 252 for daily equity
+            - 365 for daily crypto
+            - 8760 for hourly (365*24)
+            - Custom for range bars/tick data
+        rf: Risk-free rate (default 0.0)
+
+    Returns:
+        Annualized Sharpe ratio
+    """
+    return _sharpe_ratio_helper(returns, periods_per_year, rf, annualize=True)
+
+
 def sharpe_ratio_numba(
     returns: np.ndarray,
     granularity: str,
@@ -369,7 +431,18 @@ def sharpe_ratio_numba(
     rf: float = 0.0,
     annualize: bool = True,
 ) -> float:
-    """Calculate Sharpe ratio with Numba acceleration."""
+    """DEPRECATED: Use sharpe_ratio(returns, periods_per_year) instead.
+
+    This function is maintained for backward compatibility but will emit
+    a deprecation warning.
+    """
+    import warnings
+
+    warnings.warn(
+        "sharpe_ratio_numba() is deprecated. Use sharpe_ratio(returns, periods_per_year) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     trading_year_days = (
         processing_params.trading_year_days_crypto
         if market_type == "crypto"
@@ -598,9 +671,12 @@ def process_nav_data(
     excess_losses_at_bear_epochs = None
     fig = None
 
-    days_elapsed = (nav_data.index[-1] - nav_data.index[0]).days
+    # Calculate points_elapsed (time-agnostic) and days_elapsed (for display)
+    points_elapsed = len(nav_data) - 1  # Number of data points
+    days_elapsed = (nav_data.index[-1] - nav_data.index[0]).days  # For display only
 
-    sharpe_ratio = sharpe_ratio_numba(nav_data["PnL"].dropna().values, "1d")
+    # Use time-agnostic sharpe_ratio with explicit periods (default: daily crypto = 365)
+    sharpe_ratio_val = sharpe_ratio(nav_data["PnL"].dropna().values, periods_per_year=365)
     calculated_nav = bear_excess_gain_excess_loss_wrapper(TMAER, nav_data)
 
     if isinstance(calculated_nav, pd.DataFrame):
@@ -611,15 +687,15 @@ def process_nav_data(
         num_of_bear_epochs = calculated_nav.num_of_bear_epochs
 
     logger.debug(f"Threshold check details: bypass_thresholds={bypass_thresholds}")
-    logger.debug(f"SR check: {sr_lower_bound} < {sharpe_ratio} < {sr_upper_bound}")
+    logger.debug(f"SR check: {sr_lower_bound} < {sharpe_ratio_val} < {sr_upper_bound}")
     logger.debug(
         f"Bear epochs check: {bear_epochs_lower_bound} < {num_of_bear_epochs} < {bear_epochs_upper_bound}"
     )
 
     # For bear markets, we check for negative Sharpe ratios OR bypass
     sr_condition = bypass_thresholds or (
-        sr_lower_bound < sharpe_ratio < sr_upper_bound
-    ) or (sharpe_ratio < 0)  # Bear markets often have negative SR
+        sr_lower_bound < sharpe_ratio_val < sr_upper_bound
+    ) or (sharpe_ratio_val < 0)  # Bear markets often have negative SR
 
     if sr_condition and (
         bypass_thresholds
@@ -630,7 +706,7 @@ def process_nav_data(
         else:
             logger.debug("Thresholds met for synthetic data.")
 
-        logger.debug(f"Found {num_of_bear_epochs=}, {sharpe_ratio=}")
+        logger.debug(f"Found {num_of_bear_epochs=}, {sharpe_ratio_val=}")
 
         bear_epoch_dates = calculated_nav[calculated_nav["BearEpochs"]].index
 
@@ -656,7 +732,10 @@ def process_nav_data(
         logger.debug(f"bear_durations_indices: {bear_durations_indices}")
         logger.debug(f"bear_durations_days: {bear_durations_days}")
 
-        days_taken_to_bear_epoch = days_elapsed / bear_epoch_ct if bear_epoch_ct > 0 else np.nan
+        # Calculate points to epoch (time-agnostic metric)
+        points_to_bear_epoch = points_elapsed / bear_epoch_ct if bear_epoch_ct > 0 else np.nan
+        # Backward compatibility alias (deprecated)
+        days_taken_to_bear_epoch = points_to_bear_epoch
 
         recent_3_max_days = (
             np.max(bear_durations_days[-3:])
@@ -703,8 +782,8 @@ def process_nav_data(
                     f"BearCV_{bear_cv:.5f}_"
                     f"TMAER_{TMAER:.5f}_"
                     f"BearEpochs_{bear_epoch_ct}_"
-                    f"D2BE_{days_taken_to_bear_epoch:.2f}_"
-                    f"SR_{sharpe_ratio:.4f}_"
+                    f"P2E_{points_to_bear_epoch:.2f}_"
+                    f"SR_{sharpe_ratio_val:.4f}_"
                     f"UID_{uid}.html"
                 )
             else:
@@ -713,8 +792,8 @@ def process_nav_data(
                     f"BearCV_{bear_cv:.5f}_"
                     f"TMAER_{TMAER:.5f}_"
                     f"BearEpochs_{bear_epoch_ct}_"
-                    f"D2BE_{days_taken_to_bear_epoch:.2f}_"
-                    f"SR_{sharpe_ratio:.4f}_"
+                    f"P2E_{points_to_bear_epoch:.2f}_"
+                    f"SR_{sharpe_ratio_val:.4f}_"
                     f"UID_{uid}.html"
                 )
 
@@ -881,19 +960,19 @@ def process_nav_data(
                 qualified_results += 1
 
             logger.debug(
-                f"Generated {TMAER=}, {sharpe_ratio=}, {num_of_bear_epochs=}, {el_cv=},{bear_cv=}, {aggcv=}, {days_taken_to_bear_epoch=}"
+                f"Generated {TMAER=}, {sharpe_ratio_val=}, {num_of_bear_epochs=}, {el_cv=},{bear_cv=}, {aggcv=}, {points_to_bear_epoch=}"
             )
 
         if filename:
             results.append(
                 [
                     TMAER,
-                    sharpe_ratio,
+                    sharpe_ratio_val,
                     num_of_bear_epochs,
                     el_cv,
                     bear_cv,
                     aggcv,
-                    days_taken_to_bear_epoch,
+                    points_to_bear_epoch,
                     recent_3_max_days,
                     filename,
                     data_source,
@@ -916,7 +995,7 @@ def process_nav_data(
 
     return ProcessNavDataResult(
         qualified_results=qualified_results,
-        sharpe_ratio=sharpe_ratio,
+        sharpe_ratio=sharpe_ratio_val,
         num_of_bear_epochs=num_of_bear_epochs,
         filename=filename,
         uid=uid,
@@ -936,8 +1015,8 @@ def log_results(results):
         "EL CV",
         "Bear CV",
         "AGG CV",
-        "Avg Days<br/>Per Epoch",
-        "Recent 3<br/>Max Days",
+        "P2E<br/>(Points to Epoch)",
+        "Recent 3<br/>Max Points",
         "Filename",
         "Data Source",
     ]
@@ -949,8 +1028,8 @@ def log_results(results):
     df["Sharpe<br/>Ratio Rank"] = (
         df["Sharpe<br/>Ratio"].rank(method="min", ascending=True).astype(int)
     )  # Ascending for bear (more negative = better for shorts)
-    df["Recent 3<br/>Max Days Rank"] = (
-        df["Recent 3<br/>Max Days"].rank(method="min", ascending=True).astype(int)
+    df["Recent 3<br/>Max Points Rank"] = (
+        df["Recent 3<br/>Max Points"].rank(method="min", ascending=True).astype(int)
     )
 
     df["Link"] = df["Filename"].apply(
@@ -963,7 +1042,7 @@ def log_results(results):
     columns.extend(["Data Source", "Link"])
     df = df[columns]
 
-    recent_3_rank_col_index = df.columns.get_loc("Recent 3<br/>Max Days Rank")
+    recent_3_rank_col_index = df.columns.get_loc("Recent 3<br/>Max Points Rank")
 
     html_table = df.to_html(
         classes="table table-striped",

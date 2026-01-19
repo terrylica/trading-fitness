@@ -257,12 +257,12 @@ class BearExcessGainLossResult(NamedTuple):
 
 ### Fitness Qualification Criteria
 
-| Metric               | Bull Bounds          | Bear Bounds          | Purpose                 |
-| -------------------- | -------------------- | -------------------- | ----------------------- |
-| Sharpe Ratio         | 0.5 < SR < 9.9       | -9.9 < SR < -0.5     | Risk-adjusted returns   |
-| Epoch Count          | > `ceil(days/168)`   | > `ceil(days/168)`   | Minimum opportunities   |
-| Aggregate CV         | 0.0 < CV < 0.70      | 0.0 < CV < 0.70      | Epoch consistency       |
-| D2BE (Days to Epoch) | `days / epoch_count` | `days / epoch_count` | Average epoch frequency |
+| Metric                | Bull Bounds            | Bear Bounds            | Purpose                 |
+| --------------------- | ---------------------- | ---------------------- | ----------------------- |
+| Sharpe Ratio          | 0.5 < SR < 9.9         | -9.9 < SR < -0.5       | Risk-adjusted returns   |
+| Epoch Count           | > `ceil(points/168)`   | > `ceil(points/168)`   | Minimum opportunities   |
+| Aggregate CV          | 0.0 < CV < 0.70        | 0.0 < CV < 0.70        | Epoch consistency       |
+| P2E (Points to Epoch) | `points / epoch_count` | `points / epoch_count` | Average epoch frequency |
 
 ### Symmetry Proof
 
@@ -277,6 +277,38 @@ Bull excess_loss  = 1 - nav / crest     ←→  Bear excess_loss  = 1 - trough /
 Bull running_max  = cummax(nav)         ←→  Bear running_min  = cummin(nav)
 Bull new_high     = nav > candidate     ←→  Bear new_low      = nav < candidate
 ```
+
+## Universal Applicability
+
+The ITH algorithm is **timeframe-agnostic** — it operates purely on sequential data points, making it suitable for feature engineering across any data frequency:
+
+| Data Type    | Example             | Sharpe `periods_per_year` |
+| ------------ | ------------------- | ------------------------- |
+| Daily equity | SPY daily closes    | 252                       |
+| Daily crypto | BTC daily closes    | 365                       |
+| Hourly       | 4H candles          | 2190 (365×6)              |
+| Range bars   | 50-point range bars | Estimate bars/year        |
+| Tick data    | Trade ticks         | Estimate ticks/year       |
+
+### Time-Agnostic API
+
+```python
+from ith_python.ith import sharpe_ratio, SyntheticNavParams
+
+# Explicit periods (recommended for any frequency)
+sr = sharpe_ratio(returns, periods_per_year=252)  # Daily equity
+sr = sharpe_ratio(returns, periods_per_year=500)  # Custom range bars
+
+# Point-based synthetic data generation
+params = SyntheticNavParams(n_points=1000)  # Generate 1000 points
+```
+
+The core algorithm computes:
+
+- **Excess gains/losses**: Ratios relative to reference points (time-independent)
+- **Epoch detection**: Boolean condition on gains vs losses (time-independent)
+- **Interval CV**: Point-count spacing between epochs (time-independent)
+- **P2E (Points to Epoch)**: Average points between epochs (time-independent)
 
 ## License
 

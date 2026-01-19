@@ -137,15 +137,32 @@ logger.add(
 
 
 class BullIthConfig(NamedTuple):
-    """Configuration for Bull ITH (Long Position) analysis."""
+    """Configuration for Bull ITH (Long Position) analysis.
+
+    Supports two modes:
+    1. Point-based: Set analysis_n_points (recommended for feature engineering)
+    2. Date-based: Set date_initiate/date_conclude (legacy)
+
+    When analysis_n_points is set, it's used for epoch bounds calculation.
+    """
+
     delete_everything: bool = False
     output_dir: Path = get_synth_bull_ithes_dir()
     TMAEG_dynamically_determined_by: str = "mdd"
     TMAEG: float = 0.05
+
+    # Point-based configuration (preferred for time-agnostic analysis)
+    analysis_n_points: int | None = None  # If set, used for epoch bounds
+
+    # Date-based configuration (legacy, for backward compatibility)
     date_initiate: str = "2020-01-30"
     date_conclude: str = "2023-07-25"
+
+    # Epoch bounds
     bull_epochs_lower_bound: int = 10
     bull_epochs_upper_bound: int = 100000
+
+    # Fitness criteria
     sr_lower_bound: float = 0.5
     sr_upper_bound: float = 9.9
     aggcv_low_bound: float = 0
@@ -159,13 +176,28 @@ IthConfig = BullIthConfig
 
 
 class SyntheticNavParams(NamedTuple):
+    """Parameters for generating synthetic NAV data.
+
+    Supports two generation modes:
+    1. Point-based (recommended): Set n_points, dates auto-generated
+    2. Date-based (legacy): Set start_date/end_date
+
+    When n_points is set, it takes precedence over date range.
+    """
+
+    # Point-based mode (preferred for time-agnostic analysis)
+    n_points: int | None = None  # If set, generates exactly this many points
+
+    # Date-based mode (legacy, for backward compatibility)
     start_date: str = "2020-01-30"  # Start date for NAV data
     end_date: str = "2023-07-25"  # End date for NAV data
-    avg_daily_return: float = (
-        0.00010123  # Average daily return; higher values increase the overall upward trend
+
+    # Return characteristics
+    avg_period_return: float = (
+        0.00010123  # Average period return; higher values increase the overall upward trend
     )
-    daily_return_volatility: float = (
-        0.009  # Daily return volatility; higher values increase the daily fluctuations
+    period_return_volatility: float = (
+        0.009  # Period return volatility; higher values increase the fluctuations
     )
     df: int = (
         5  # Degrees of freedom for the t-distribution; lower values increase the likelihood of extreme returns
@@ -393,7 +425,7 @@ logger.debug(f"{existing_csv_files=}")
 
 @njit
 def _apply_drawdown_events(
-    daily_returns: np.ndarray,
+    period_returns: np.ndarray,
     drawdown_prob: float,
     drawdown_magnitude_low: float,
     drawdown_magnitude_high: float,
@@ -401,19 +433,19 @@ def _apply_drawdown_events(
 ) -> np.ndarray:
     """Numba-accelerated drawdown event simulation.
 
-    Modifies daily_returns in place to add drawdown events.
+    Modifies period_returns in place to add drawdown events.
 
     Args:
-        daily_returns: Array of daily returns to modify
+        period_returns: Array of period returns to modify
         drawdown_prob: Probability of entering a drawdown
         drawdown_magnitude_low: Lower bound of drawdown magnitude
         drawdown_magnitude_high: Upper bound of drawdown magnitude
         drawdown_recovery_prob: Probability of recovering from a drawdown
 
     Returns:
-        Modified daily_returns array with drawdown events applied
+        Modified period_returns array with drawdown events applied
     """
-    n = len(daily_returns)
+    n = len(period_returns)
     drawdown = False
 
     for i in range(n):
@@ -422,13 +454,13 @@ def _apply_drawdown_events(
             magnitude = drawdown_magnitude_low + np.random.random() * (
                 drawdown_magnitude_high - drawdown_magnitude_low
             )
-            daily_returns[i] -= magnitude
+            period_returns[i] -= magnitude
             if np.random.random() < drawdown_recovery_prob:
                 drawdown = False
         elif np.random.random() < drawdown_prob:
             drawdown = True
 
-    return daily_returns
+    return period_returns
 
 
 def generate_synthetic_nav(params: SyntheticNavParams):
@@ -436,20 +468,31 @@ def generate_synthetic_nav(params: SyntheticNavParams):
 
     Uses MULTIPLICATIVE returns (cumprod) to guarantee NAV stays positive.
     This is symmetric with the bear generator which also uses cumprod.
-    """
-    dates = pd.date_range(params.start_date, params.end_date)
 
-    # Generate daily returns using t-distribution
-    daily_returns = stats.t.rvs(
+    If params.n_points is set, generates exactly that many points.
+    Otherwise, uses start_date/end_date for backward compatibility.
+    """
+    if params.n_points is not None:
+        # Point-based mode: generate fixed number of points
+        n = params.n_points
+        # Create dummy dates starting from a fixed base (for plotting compatibility)
+        dates = pd.date_range(start="2020-01-01", periods=n, freq="D")
+    else:
+        # Date-based mode (legacy)
+        dates = pd.date_range(params.start_date, params.end_date)
+        n = len(dates)
+
+    # Generate period returns using t-distribution
+    period_returns = stats.t.rvs(
         params.df,
-        loc=params.avg_daily_return,
-        scale=params.daily_return_volatility,
-        size=len(dates),
+        loc=params.avg_period_return,
+        scale=params.period_return_volatility,
+        size=n,
     )
 
     # Add drawdowns using Numba-accelerated function
-    daily_returns = _apply_drawdown_events(
-        daily_returns,
+    period_returns = _apply_drawdown_events(
+        period_returns,
         params.drawdown_prob,
         params.drawdown_magnitude_low,
         params.drawdown_magnitude_high,
@@ -459,8 +502,8 @@ def generate_synthetic_nav(params: SyntheticNavParams):
     # Use MULTIPLICATIVE returns: NAV = cumprod(1 + returns)
     # This guarantees NAV stays positive (unlike additive cumsum)
     # Clamp returns to prevent NAV going negative (returns > -100%)
-    daily_returns = np.clip(daily_returns, -0.99, None)
-    walk = np.cumprod(1 + daily_returns)
+    period_returns = np.clip(period_returns, -0.99, None)
+    walk = np.cumprod(1 + period_returns)
 
     nav = pd.DataFrame(data=walk, index=dates, columns=["NAV"])
     nav.index.name = "Date"
@@ -487,6 +530,38 @@ def _sharpe_ratio_numba_helper(
     )
 
 
+def sharpe_ratio(
+    returns: np.ndarray,
+    periods_per_year: float,
+    rf: float = 0.0,
+) -> float:
+    """Calculate annualized Sharpe ratio with explicit periods.
+
+    This is the time-agnostic API. For any data frequency, caller specifies
+    the number of periods per year directly.
+
+    Args:
+        returns: Array of periodic returns
+        periods_per_year: Number of data points per year
+            - 252 for daily equity
+            - 365 for daily crypto
+            - 8760 for hourly (365*24)
+            - Custom for range bars/tick data
+        rf: Risk-free rate (default 0.0)
+
+    Returns:
+        Annualized Sharpe ratio
+
+    Example:
+        # Daily equity data
+        sr = sharpe_ratio(returns, periods_per_year=252)
+
+        # Range bar data (500 bars expected per year)
+        sr = sharpe_ratio(returns, periods_per_year=500)
+    """
+    return _sharpe_ratio_numba_helper(returns, periods_per_year, rf, annualize=True)
+
+
 def sharpe_ratio_numba(
     returns: np.ndarray,
     granularity: str,
@@ -494,6 +569,18 @@ def sharpe_ratio_numba(
     rf: float = 0.0,
     annualize: bool = True,
 ) -> float:
+    """DEPRECATED: Use sharpe_ratio(returns, periods_per_year) instead.
+
+    This function is maintained for backward compatibility but will emit
+    a deprecation warning.
+    """
+    import warnings
+
+    warnings.warn(
+        "sharpe_ratio_numba() is deprecated. Use sharpe_ratio(returns, periods_per_year) instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     trading_year_days = (
         processing_params.trading_year_days_crypto
         if market_type == "crypto"
@@ -744,7 +831,7 @@ def pnl_from_nav(nav_data) -> PnLResult:
 
 class ProcessNavDataResult(NamedTuple):
     qualified_results: int
-    sharpe_ratio: float
+    sharpe_ratio_val: float
     num_of_bull_epochs: int
     filename: str
     uid: str
@@ -760,8 +847,8 @@ def log_results(results):
         "EL CV",
         "Bull CV",
         "AGG CV",
-        "Avg Days<br/>Per Epoch",
-        "Recent 3<br/>Max Days",
+        "P2E<br/>(Points to Epoch)",
+        "Recent 3<br/>Max Points",
         "Filename",
         "Data Source",
     ]
@@ -778,9 +865,9 @@ def log_results(results):
         df["Sharpe<br/>Ratio"].rank(method="min", ascending=False).astype(int)
     )
 
-    # Add a rank column for Recent 3 Max Days (smallest value ranks as #1, convert to integer)
-    df["Recent 3<br/>Max Days Rank"] = (
-        df["Recent 3<br/>Max Days"].rank(method="min", ascending=True).astype(int)
+    # Add a rank column for Recent 3 Max Points (smallest value ranks as #1, convert to integer)
+    df["Recent 3<br/>Max Points Rank"] = (
+        df["Recent 3<br/>Max Points"].rank(method="min", ascending=True).astype(int)
     )
 
     # Create a new column with HTML links
@@ -795,8 +882,8 @@ def log_results(results):
     columns.extend(["Data Source", "Link"])
     df = df[columns]
 
-    # Get the index of the Recent 3 Max Days Rank column for default sorting
-    recent_3_rank_col_index = df.columns.get_loc("Recent 3<br/>Max Days Rank")
+    # Get the index of the Recent 3 Max Points Rank column for default sorting
+    recent_3_rank_col_index = df.columns.get_loc("Recent 3<br/>Max Points Rank")
 
     html_table = df.to_html(
         classes="table table-striped",
@@ -888,10 +975,12 @@ def process_nav_data(
     excess_losses_at_bull_epochs = None
     fig = None  # Initialize fig to None
 
-    # Calculate days_elapsed here
-    days_elapsed = (nav_data.index[-1] - nav_data.index[0]).days
+    # Calculate points_elapsed (time-agnostic) and days_elapsed (for display)
+    points_elapsed = len(nav_data) - 1  # Number of data points
+    days_elapsed = (nav_data.index[-1] - nav_data.index[0]).days  # For display only
 
-    sharpe_ratio = sharpe_ratio_numba(nav_data["PnL"].dropna().values, "1d")
+    # Use time-agnostic sharpe_ratio with explicit periods (default: daily crypto = 365)
+    sharpe_ratio_val = sharpe_ratio(nav_data["PnL"].dropna().values, periods_per_year=365)
     calculated_nav = excess_gain_excess_loss_numba(TMAEG, nav_data)
 
     if isinstance(calculated_nav, pd.DataFrame):
@@ -903,13 +992,13 @@ def process_nav_data(
 
     # Add detailed logging for threshold checks
     logger.debug(f"Threshold check details: bypass_thresholds={bypass_thresholds}")
-    logger.debug(f"SR check: {sr_lower_bound} < {sharpe_ratio} < {sr_upper_bound}")
+    logger.debug(f"SR check: {sr_lower_bound} < {sharpe_ratio_val} < {sr_upper_bound}")
     logger.debug(
         f"Bull epochs check: {bull_epochs_lower_bound} < {num_of_bull_epochs} < {bull_epochs_upper_bound}"
     )
 
     if bypass_thresholds or (
-        sr_lower_bound < sharpe_ratio < sr_upper_bound
+        sr_lower_bound < sharpe_ratio_val < sr_upper_bound
         and bull_epochs_lower_bound < num_of_bull_epochs < bull_epochs_upper_bound
     ):
         if bypass_thresholds:
@@ -917,7 +1006,7 @@ def process_nav_data(
         else:
             logger.debug("Thresholds met for synthetic data.")
 
-        logger.debug(f"Found {num_of_bull_epochs=}, {sharpe_ratio=}")
+        logger.debug(f"Found {num_of_bull_epochs=}, {sharpe_ratio_val=}")
 
         # Get actual bull epoch dates (confirmed epochs only)
         bull_epoch_dates = calculated_nav[calculated_nav["BullEpochs"]].index
@@ -949,8 +1038,10 @@ def process_nav_data(
         logger.debug(f"bull_durations_indices: {bull_durations_indices}")
         logger.debug(f"bull_durations_days: {bull_durations_days}")
 
-        # Calculate average days to bull epoch (traditional metric)
-        days_taken_to_bull_epoch = days_elapsed / bull_epoch_ct if bull_epoch_ct > 0 else np.nan
+        # Calculate points to epoch (time-agnostic metric)
+        points_to_bull_epoch = points_elapsed / bull_epoch_ct if bull_epoch_ct > 0 else np.nan
+        # Backward compatibility alias (deprecated)
+        days_taken_to_bull_epoch = points_to_bull_epoch
 
         # Calculate maximum of recent 3 timespan durations in days
         recent_3_max_days = (
@@ -1006,8 +1097,8 @@ def process_nav_data(
                     f"BullCV_{bull_cv:.5f}_"
                     f"TMAEG_{TMAEG:.5f}_"
                     f"BullEpochs_{bull_epoch_ct}_"
-                    f"D2BE_{days_taken_to_bull_epoch:.2f}_"
-                    f"SR_{sharpe_ratio:.4f}_"
+                    f"P2E_{points_to_bull_epoch:.2f}_"
+                    f"SR_{sharpe_ratio_val:.4f}_"
                     f"UID_{uid}.html"
                 )
             else:
@@ -1016,8 +1107,8 @@ def process_nav_data(
                     f"BullCV_{bull_cv:.5f}_"
                     f"TMAEG_{TMAEG:.5f}_"
                     f"BullEpochs_{bull_epoch_ct}_"
-                    f"D2BE_{days_taken_to_bull_epoch:.2f}_"
-                    f"SR_{sharpe_ratio:.4f}_"
+                    f"P2E_{points_to_bull_epoch:.2f}_"
+                    f"SR_{sharpe_ratio_val:.4f}_"
                     f"UID_{uid}.html"
                 )
 
@@ -1185,7 +1276,7 @@ def process_nav_data(
                 qualified_results += 1
 
             logger.debug(
-                f"Generated {TMAEG=}, {sharpe_ratio=}, {num_of_bull_epochs=}, {el_cv=},{bull_cv=}, {aggcv=}, {days_taken_to_bull_epoch=}"
+                f"Generated {TMAEG=}, {sharpe_ratio_val=}, {num_of_bull_epochs=}, {el_cv=},{bull_cv=}, {aggcv=}, {points_to_bull_epoch=}"
             )
 
         # Append the results to the list only if filename is not None
@@ -1193,12 +1284,12 @@ def process_nav_data(
             results.append(
                 [
                     TMAEG,
-                    sharpe_ratio,
+                    sharpe_ratio_val,
                     num_of_bull_epochs,
                     el_cv,
                     bull_cv,
                     aggcv,
-                    days_taken_to_bull_epoch,
+                    points_to_bull_epoch,
                     recent_3_max_days,
                     filename,
                     data_source,
@@ -1222,7 +1313,7 @@ def process_nav_data(
 
     return ProcessNavDataResult(
         qualified_results=qualified_results,
-        sharpe_ratio=sharpe_ratio,
+        sharpe_ratio_val=sharpe_ratio_val,
         num_of_bull_epochs=num_of_bull_epochs,
         filename=filename,
         uid=uid,
@@ -1298,7 +1389,7 @@ with create_progress_bar(console) as progress:
 
         if result.filename is not None:
             logger.debug(
-                f"Processing synthetic data {counter:4}: {result.filename=}, {result.uid=}, {TMAEG=}, {result.sharpe_ratio=}, newly generated."
+                f"Processing synthetic data {counter:4}: {result.filename=}, {result.uid=}, {TMAEG=}, {result.sharpe_ratio_val=}, newly generated."
             )
             if result.fig is not None:
                 save_files(

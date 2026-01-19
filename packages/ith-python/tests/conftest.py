@@ -26,12 +26,17 @@ class BearSyntheticNavParams(NamedTuple):
 
     Used by test fixtures to generate consistent test data without
     importing from bear_ith.py (avoiding circular imports).
+
+    Supports two generation modes:
+    1. Point-based (recommended): Set n_points, dates auto-generated
+    2. Date-based (legacy): Set start_date/end_date
     """
 
+    n_points: int | None = None  # If set, generates exactly this many points
     start_date: str = "2020-01-01"
     end_date: str = "2020-06-30"  # Shorter period for faster tests
-    avg_daily_return: float = -0.001  # Negative drift for bear market
-    daily_return_volatility: float = 0.008
+    avg_period_return: float = -0.001  # Negative drift for bear market
+    period_return_volatility: float = 0.008
     df: int = 5  # Degrees of freedom for t-distribution
     rally_prob: float = 0.05
     rally_magnitude_low: float = 0.001
@@ -51,21 +56,28 @@ def generate_synthetic_bear_nav_func():
         if params is None:
             params = BearSyntheticNavParams()
 
-        dates = pd.date_range(params.start_date, params.end_date)
+        if params.n_points is not None:
+            # Point-based mode
+            n = params.n_points
+            dates = pd.date_range(start="2020-01-01", periods=n, freq="D")
+        else:
+            # Date-based mode (legacy)
+            dates = pd.date_range(params.start_date, params.end_date)
+            n = len(dates)
 
-        # Generate daily returns using t-distribution
-        daily_returns = stats.t.rvs(
+        # Generate period returns using t-distribution
+        period_returns = stats.t.rvs(
             params.df,
-            loc=params.avg_daily_return,
-            scale=params.daily_return_volatility,
-            size=len(dates),
+            loc=params.avg_period_return,
+            scale=params.period_return_volatility,
+            size=n,
         )
 
         # Add dead cat bounces (rallies in bear market)
         rally = False
-        for i in range(len(dates)):
+        for i in range(n):
             if rally:
-                daily_returns[i] += np.random.uniform(
+                period_returns[i] += np.random.uniform(
                     params.rally_magnitude_low, params.rally_magnitude_high
                 )
                 if np.random.rand() < params.rally_recovery_prob:
@@ -74,8 +86,8 @@ def generate_synthetic_bear_nav_func():
                 rally = True
 
         # Use MULTIPLICATIVE returns to guarantee NAV stays positive
-        daily_returns = np.clip(daily_returns, -0.99, None)
-        walk = np.cumprod(1 + daily_returns)
+        period_returns = np.clip(period_returns, -0.99, None)
+        walk = np.cumprod(1 + period_returns)
 
         nav = pd.DataFrame(data=walk, index=dates, columns=["NAV"])
         nav.index.name = "Date"
@@ -113,6 +125,42 @@ def sample_nav_array() -> np.ndarray:
     returns = np.random.randn(100) * 0.01 + 0.001
     nav = np.cumprod(1 + returns)
     return nav
+
+
+# === Point-Based Fixtures (Time-Agnostic) ===
+
+
+@pytest.fixture
+def sample_nav_array_100_points() -> np.ndarray:
+    """Generate 100-point NAV array (no dates, pure point-based)."""
+    np.random.seed(42)
+    returns = 1 + np.random.randn(100) * 0.02 + 0.001
+    return np.cumprod(returns) * 100
+
+
+@pytest.fixture
+def sample_nav_array_500_points() -> np.ndarray:
+    """Generate 500-point NAV array (no dates, pure point-based)."""
+    np.random.seed(42)
+    returns = 1 + np.random.randn(500) * 0.02 + 0.001
+    return np.cumprod(returns) * 100
+
+
+@pytest.fixture
+def sample_nav_array_1000_points() -> np.ndarray:
+    """Generate 1000-point NAV array (no dates, pure point-based)."""
+    np.random.seed(42)
+    returns = 1 + np.random.randn(1000) * 0.02 + 0.001
+    return np.cumprod(returns) * 100
+
+
+@pytest.fixture(params=[100, 500, 1000])
+def sample_nav_array_parametrized(request) -> np.ndarray:
+    """Parametrized NAV array fixture for various point counts."""
+    n_points = request.param
+    np.random.seed(42)
+    returns = 1 + np.random.randn(n_points) * 0.02 + 0.001
+    return np.cumprod(returns) * 100
 
 
 @pytest.fixture

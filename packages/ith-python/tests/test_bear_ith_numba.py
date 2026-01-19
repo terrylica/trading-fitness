@@ -22,12 +22,14 @@ class BearSyntheticNavParams(NamedTuple):
     """Parameters for generating synthetic bear market NAV data.
 
     Local definition to avoid fragile conftest imports.
+    Supports both point-based and date-based modes.
     """
 
+    n_points: int | None = None  # If set, generates exactly this many points
     start_date: str = "2020-01-01"
     end_date: str = "2020-06-30"
-    avg_daily_return: float = -0.001
-    daily_return_volatility: float = 0.008
+    avg_period_return: float = -0.001
+    period_return_volatility: float = 0.008
     df: int = 5
     rally_prob: float = 0.05
     rally_magnitude_low: float = 0.001

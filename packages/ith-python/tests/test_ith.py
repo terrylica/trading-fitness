@@ -78,6 +78,63 @@ class TestSharpeRatio:
             assert sr_crypto > sr_other
 
 
+class TestSharpeRatioTimeAgnostic:
+    """Tests for time-agnostic sharpe_ratio() function."""
+
+    def test_sharpe_ratio_explicit_periods(self):
+        """Test Sharpe with explicit periods_per_year."""
+        from ith_python.ith import sharpe_ratio
+
+        returns = np.array([0.01, 0.02, 0.01, 0.015, 0.02] * 20)
+        sr = sharpe_ratio(returns, periods_per_year=252)
+        assert sr > 0
+        assert isinstance(sr, (float, np.floating))
+
+    def test_sharpe_ratio_custom_periods(self):
+        """Test Sharpe with custom period count (e.g., range bars)."""
+        from ith_python.ith import sharpe_ratio
+
+        returns = np.array([0.01, 0.02, 0.01, 0.015, 0.02] * 20)
+        sr_252 = sharpe_ratio(returns, periods_per_year=252)
+        sr_500 = sharpe_ratio(returns, periods_per_year=500)
+        # More periods = higher annualized Sharpe (for positive returns)
+        assert sr_500 > sr_252
+
+    def test_sharpe_ratio_different_frequencies(self):
+        """Test Sharpe ratio scales correctly with different frequencies."""
+        from ith_python.ith import sharpe_ratio
+
+        returns = np.array([0.01] * 100 + [0.02] * 100)  # Positive returns
+        sr_daily = sharpe_ratio(returns, periods_per_year=252)
+        sr_hourly = sharpe_ratio(returns, periods_per_year=252 * 24)
+
+        # Hourly should scale up by sqrt(24) approximately
+        assert sr_hourly > sr_daily
+
+    def test_sharpe_ratio_deprecation_warning(self):
+        """Verify deprecation warning for old API."""
+        import warnings
+        from ith_python.ith import sharpe_ratio_numba
+
+        returns = np.array([0.01, 0.02, 0.01, 0.015, 0.02] * 20)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            sharpe_ratio_numba(returns, "1d", "crypto")
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+    def test_sharpe_ratio_with_risk_free_rate(self):
+        """Test Sharpe ratio with non-zero risk-free rate."""
+        from ith_python.ith import sharpe_ratio
+
+        returns = np.array([0.01, 0.02, 0.01, 0.015, 0.02] * 20)
+        sr_no_rf = sharpe_ratio(returns, periods_per_year=252, rf=0.0)
+        sr_with_rf = sharpe_ratio(returns, periods_per_year=252, rf=0.001)
+        # With positive risk-free rate, Sharpe should be lower
+        assert sr_with_rf < sr_no_rf
+
+
 class TestMaxDrawdown:
     """Tests for max drawdown calculation."""
 
@@ -122,6 +179,7 @@ class TestBullIthConfig:
         assert config.bull_epochs_lower_bound == 10
         assert config.sr_lower_bound == 0.5
         assert config.sr_upper_bound == 9.9
+        assert config.analysis_n_points is None  # Default is date-based mode
 
     def test_config_is_immutable(self):
         """NamedTuple config should be immutable."""
@@ -150,9 +208,10 @@ class TestSyntheticNavParams:
 
         assert params.start_date == "2020-01-30"
         assert params.end_date == "2023-07-25"
-        assert params.avg_daily_return > 0
-        assert params.daily_return_volatility > 0
+        assert params.avg_period_return > 0
+        assert params.period_return_volatility > 0
         assert 0 < params.drawdown_prob < 1
+        assert params.n_points is None  # Default is date-based mode
 
 
 class TestGenerateSyntheticNav:
@@ -185,6 +244,32 @@ class TestGenerateSyntheticNav:
         expected_pnl = nav["NAV"].diff().iloc[1:]
         actual_pnl = nav["PnL"].iloc[1:]
         np.testing.assert_array_almost_equal(expected_pnl.values, actual_pnl.values)
+
+    def test_point_based_generation(self):
+        """Test point-based synthetic NAV generation (time-agnostic)."""
+        from ith_python.ith import generate_synthetic_nav, SyntheticNavParams
+
+        params = SyntheticNavParams(n_points=500)
+        nav = generate_synthetic_nav(params)
+
+        assert len(nav) == 500
+        assert "NAV" in nav.columns
+        assert "PnL" in nav.columns
+        assert (nav["NAV"] > 0).all()  # NAV always positive
+
+    def test_point_based_overrides_dates(self):
+        """When n_points is set, it should override date range."""
+        from ith_python.ith import generate_synthetic_nav, SyntheticNavParams
+
+        # Set dates that would give ~365 days, but n_points=100 should override
+        params = SyntheticNavParams(
+            n_points=100,
+            start_date="2020-01-01",
+            end_date="2020-12-31",
+        )
+        nav = generate_synthetic_nav(params)
+
+        assert len(nav) == 100  # n_points takes precedence
 
 
 class TestLoadAndValidateCsv:

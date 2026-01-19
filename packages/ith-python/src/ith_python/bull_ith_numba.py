@@ -190,25 +190,35 @@ def max_drawdown(nav_values: np.ndarray) -> float:
 def generate_synthetic_nav(
     start_date: str = "2020-01-01",
     end_date: str = "2023-01-01",
-    avg_daily_return: float = 0.0001,
-    daily_return_volatility: float = 0.01,
+    avg_period_return: float = 0.0001,
+    period_return_volatility: float = 0.01,
     df: int = 5,
+    n_points: int | None = None,
 ) -> pd.DataFrame:
     """Generate synthetic NAV data using t-distribution returns.
 
+    Supports two generation modes:
+    1. Point-based (recommended): Set n_points, dates auto-generated
+    2. Date-based (legacy): Set start_date/end_date
+
     Args:
-        start_date: Start date for the NAV series.
-        end_date: End date for the NAV series.
-        avg_daily_return: Average daily return.
-        daily_return_volatility: Daily return volatility.
+        start_date: Start date for the NAV series (legacy mode).
+        end_date: End date for the NAV series (legacy mode).
+        avg_period_return: Average period return.
+        period_return_volatility: Period return volatility.
         df: Degrees of freedom for the t-distribution.
+        n_points: If set, generates exactly this many points.
 
     Returns:
         DataFrame with Date index and NAV column.
     """
-    dates = pd.date_range(start_date, end_date)
+    if n_points is not None:
+        dates = pd.date_range(start="2020-01-01", periods=n_points, freq="D")
+    else:
+        dates = pd.date_range(start_date, end_date)
+
     walk = stats.t.rvs(
-        df, loc=avg_daily_return, scale=daily_return_volatility, size=len(dates)
+        df, loc=avg_period_return, scale=period_return_volatility, size=len(dates)
     )
     walk = np.cumsum(walk)
     walk = walk - walk[0] + 1  # Normalize the series so that it starts with 1
