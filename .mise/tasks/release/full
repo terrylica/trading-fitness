@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Complete release workflow"
+#MISE depends=["release:preflight"]
+set -euo pipefail
+
+echo ""
+echo "╔═══════════════════════════════════════════════════════════╗"
+echo "║  trading-fitness Full Release Workflow                     ║"
+echo "╚═══════════════════════════════════════════════════════════╝"
+echo ""
+
+# Phase 2: Version
+mise run release:version
+
+echo ""
+echo "╔═══════════════════════════════════════════════════════════╗"
+echo "║  ✓ Release workflow complete!                             ║"
+echo "╚═══════════════════════════════════════════════════════════╝"
+echo ""

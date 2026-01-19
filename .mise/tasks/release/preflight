@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#MISE description="Phase 1: Validate prerequisites for release"
+set -euo pipefail
+
+echo "═══════════════════════════════════════════════════════════"
+echo "  Phase 1: PREFLIGHT"
+echo "═══════════════════════════════════════════════════════════"
+
+# Check 1: Working directory clean
+echo "→ Checking working directory..."
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "  ✗ Working directory not clean"
+    git status --short
+    exit 1
+fi
+echo "  ✓ Working directory clean"
+
+# Check 2: GitHub authentication
+echo "→ Checking GitHub authentication..."
+if [[ -z "${GH_TOKEN:-}" ]]; then
+    echo "  ✗ GH_TOKEN not set"
+    echo "    Run: eval \"\$(mise env)\" or check mise.toml"
+    exit 1
+fi
+if [[ -z "$(echo "$GH_TOKEN" | tr -d '[:space:]')" ]]; then
+    echo "  ✗ GH_TOKEN is empty"
+    exit 1
+fi
+echo "  ✓ GH_TOKEN present (${#GH_TOKEN} chars)"
+
+# Check 3: On main branch
+echo "→ Checking branch..."
+BRANCH=$(git branch --show-current)
+if [[ "$BRANCH" != "main" ]]; then
+    echo "  ✗ Not on main branch (current: $BRANCH)"
+    exit 1
+fi
+echo "  ✓ On main branch"
+
+# Check 4: Releasable commits exist
+echo "→ Checking for releasable commits..."
+LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+if [[ -n "$LATEST_TAG" ]]; then
+    COMMITS=$(git log "$LATEST_TAG"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$COMMITS" -eq 0 ]]; then
+        echo "  ✗ No commits since $LATEST_TAG"
+        exit 1
+    fi
+    echo "  ✓ Found $COMMITS commits since $LATEST_TAG"
+else
+    COMMITS=$(git log --oneline 2>/dev/null | wc -l | tr -d ' ')
+    echo "  ✓ No previous tags, $COMMITS commits to release"
+fi
+
+# Check 5: Tests pass
+echo "→ Running tests..."
+if ! mise run test >/dev/null 2>&1; then
+    echo "  ✗ Tests failed"
+    exit 1
+fi
+echo "  ✓ Tests passed"
+
+echo ""
+echo "✓ All preflight checks passed"
+echo ""

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Phase 2: Run semantic-release (version bump + changelog)"
+#MISE depends=["release:preflight"]
+set -euo pipefail
+
+echo "═══════════════════════════════════════════════════════════"
+echo "  Phase 2: VERSION (semantic-release)"
+echo "═══════════════════════════════════════════════════════════"
+
+# Ensure node_modules are installed
+if [[ ! -d "node_modules" ]]; then
+    echo "→ Installing npm dependencies..."
+    npm install --silent
+fi
+
+# Run semantic-release
+semantic-release --no-ci
+
+echo ""
+echo "✓ Version phase complete"
+echo ""
