@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/terrylica/trading-fitness/compare/v1.0.3...v1.0.4) (2026-01-19)
+
+
+### Bug Fixes
+
+* **mise:** add missing bear analysis to analyze task ([2d4cc5c](https://github.com/terrylica/trading-fitness/commit/2d4cc5c2664cfcfdc5c3f912321c55b6fb2e6d03))
+
 ## [1.0.3](https://github.com/terrylica/trading-fitness/compare/v1.0.2...v1.0.3) (2026-01-19)
 
 ## [1.0.2](https://github.com/terrylica/trading-fitness/compare/v1.0.1...v1.0.2) (2026-01-19)
