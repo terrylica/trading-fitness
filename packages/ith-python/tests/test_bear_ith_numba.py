@@ -5,6 +5,8 @@ SRED-Type: experimental-development
 SRED-Claim: BEAR-ITH
 """
 
+from typing import NamedTuple
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,8 +17,22 @@ from ith_python.bear_ith_numba import (
     max_runup,
 )
 
-# Import BearSyntheticNavParams from conftest for use in tests
-from conftest import BearSyntheticNavParams
+
+class BearSyntheticNavParams(NamedTuple):
+    """Parameters for generating synthetic bear market NAV data.
+
+    Local definition to avoid fragile conftest imports.
+    """
+
+    start_date: str = "2020-01-01"
+    end_date: str = "2020-06-30"
+    avg_daily_return: float = -0.001
+    daily_return_volatility: float = 0.008
+    df: int = 5
+    rally_prob: float = 0.05
+    rally_magnitude_low: float = 0.001
+    rally_magnitude_high: float = 0.003
+    rally_recovery_prob: float = 0.05
 
 
 class TestBearExcessGainLossResult:

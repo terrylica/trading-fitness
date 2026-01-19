@@ -3,6 +3,7 @@
 
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -13,6 +14,25 @@ from numba import njit
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages/ith-python/src"))
 
 from ith_python.bull_ith_numba import bull_excess_gain_excess_loss
+
+# === Benchmark Constants ===
+# ITH Analysis
+ITH_HURDLE_THRESHOLD = 0.05  # TMAEG hurdle for epoch detection
+
+# Sharpe Ratio
+TRADING_DAYS_PER_YEAR = 252.0  # Standard trading days for annualization
+RISK_FREE_RATE = 0.0  # Risk-free rate for excess returns
+
+# Synthetic Data Generation
+STARTING_NAV = 100  # Initial NAV value
+DAILY_DRIFT = 0.0005  # Expected daily return (0.05%)
+DAILY_VOLATILITY = 0.02  # Daily volatility (2%)
+
+# Benchmark Configuration
+DATASET_SIZES = [1_000, 10_000, 100_000, 1_000_000]
+ITERATIONS_BY_SIZE = {1_000: 1000, 10_000: 100, 100_000: 10, 1_000_000: 5}
+SUBPROCESS_TIMEOUT_RUST = 120  # seconds
+SUBPROCESS_TIMEOUT_BUN = 60  # seconds
 
 
 @njit
@@ -61,28 +81,25 @@ def _max_drawdown_numba(nav_values: np.ndarray) -> float:
 def generate_nav_series(n: int, seed: int = 42) -> np.ndarray:
     """Generate synthetic NAV series with realistic characteristics."""
     rng = np.random.default_rng(seed)
-    # Start at 100, random walk with slight upward drift
-    returns = rng.normal(0.0005, 0.02, n)  # 0.05% daily drift, 2% volatility
-    nav = 100 * np.cumprod(1 + returns)
+    returns = rng.normal(DAILY_DRIFT, DAILY_VOLATILITY, n)
+    nav = STARTING_NAV * np.cumprod(1 + returns)
     return nav
 
 
 def benchmark_python_numba(nav: np.ndarray, iterations: int = 100) -> dict:
     """Benchmark Numba-accelerated Python implementation."""
-    hurdle = 0.05
-
     # Calculate returns for sharpe ratio
     returns = np.diff(nav) / nav[:-1]
 
     # Warm up JIT compilation
-    _sharpe_ratio_numba(returns[:100], 252.0, 0.0)
+    _sharpe_ratio_numba(returns[:100], TRADING_DAYS_PER_YEAR, RISK_FREE_RATE)
     _max_drawdown_numba(nav[:100])
-    bull_excess_gain_excess_loss(nav[:100], hurdle)
+    bull_excess_gain_excess_loss(nav[:100], ITH_HURDLE_THRESHOLD)
 
     # Benchmark sharpe_ratio
     start = time.perf_counter()
     for _ in range(iterations):
-        _sharpe_ratio_numba(returns, 252.0, 0.0)
+        _sharpe_ratio_numba(returns, TRADING_DAYS_PER_YEAR, RISK_FREE_RATE)
     sharpe_time = (time.perf_counter() - start) / iterations * 1000
 
     # Benchmark max_drawdown
@@ -94,7 +111,7 @@ def benchmark_python_numba(nav: np.ndarray, iterations: int = 100) -> dict:
     # Benchmark excess_gain_excess_loss (ITH)
     start = time.perf_counter()
     for _ in range(iterations):
-        bull_excess_gain_excess_loss(nav, hurdle)
+        bull_excess_gain_excess_loss(nav, ITH_HURDLE_THRESHOLD)
     ith_time = (time.perf_counter() - start) / iterations * 1000
 
     return {
@@ -116,15 +133,16 @@ def benchmark_rust(nav: np.ndarray, iterations: int = 100) -> dict | None:
         return None
 
     # Write NAV data to temp file
-    nav_file = Path("/tmp/benchmark_nav.csv")
-    np.savetxt(nav_file, nav, delimiter=",")
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+        nav_file = Path(f.name)
+        np.savetxt(f, nav, delimiter=",")
 
     try:
         result = subprocess.run(
             [str(benchmark_bin), str(nav_file), str(iterations)],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=SUBPROCESS_TIMEOUT_RUST,
             check=False,  # We handle failure explicitly below
         )
 
@@ -143,16 +161,19 @@ def benchmark_rust(nav: np.ndarray, iterations: int = 100) -> dict | None:
     except (subprocess.TimeoutExpired, FileNotFoundError, ValueError) as e:
         print(f"Rust benchmark failed: {e}")
         return None
+    finally:
+        nav_file.unlink(missing_ok=True)
 
 
 def benchmark_bun(nav: np.ndarray, iterations: int = 100) -> dict | None:
     """Benchmark Bun/TypeScript implementation."""
+    import json
+
     bun_dir = Path(__file__).parent.parent / "packages/core-bun"
 
     # Write NAV data to temp file as JSON
-    nav_file = Path("/tmp/benchmark_nav.json")
-    import json
-    with open(nav_file, "w") as f:
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        nav_file = Path(f.name)
         json.dump(nav.tolist(), f)
 
     # Create benchmark script
@@ -161,15 +182,15 @@ def benchmark_bun(nav: np.ndarray, iterations: int = 100) -> dict | None:
 import {{ sharpeRatio, maxDrawdown, pnlFromNav }} from "./src/metrics";
 import {{ excessGainExcessLoss }} from "./src/ith";
 
-const nav: number[] = await Bun.file("/tmp/benchmark_nav.json").json();
+const nav: number[] = await Bun.file("{nav_file}").json();
 const iterations = {iterations};
-const hurdle = 0.05;
+const hurdle = {ITH_HURDLE_THRESHOLD};
 const pnl = pnlFromNav(nav);
 
 // Benchmark sharpe_ratio
 let start = performance.now();
 for (let i = 0; i < iterations; i++) {{
-    sharpeRatio(pnl, 252, 0);
+    sharpeRatio(pnl, {int(TRADING_DAYS_PER_YEAR)}, {RISK_FREE_RATE});
 }}
 const sharpeTime = (performance.now() - start) / iterations;
 
@@ -202,7 +223,7 @@ console.log(`total_ms:${{sharpeTime + mddTime + ithTime}}`);
             cwd=bun_dir,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=SUBPROCESS_TIMEOUT_BUN,
             check=False,  # We handle failure explicitly below
         )
 
@@ -223,6 +244,7 @@ console.log(`total_ms:${{sharpeTime + mddTime + ithTime}}`);
         return None
     finally:
         bench_script.unlink(missing_ok=True)
+        nav_file.unlink(missing_ok=True)
 
 
 def format_results(results: dict, name: str, baseline: dict | None = None) -> None:
@@ -249,12 +271,8 @@ def main():
     print("Trading Fitness Benchmark")
     print("=" * 60)
 
-    # Test different data sizes
-    sizes = [1_000, 10_000, 100_000, 1_000_000]
-    iterations_map = {1_000: 1000, 10_000: 100, 100_000: 10, 1_000_000: 5}
-
-    for size in sizes:
-        iterations = iterations_map[size]
+    for size in DATASET_SIZES:
+        iterations = ITERATIONS_BY_SIZE[size]
         print(f"\n\n{'#'*60}")
         print(f"# Dataset size: {size:,} data points")
         print(f"# Iterations: {iterations}")

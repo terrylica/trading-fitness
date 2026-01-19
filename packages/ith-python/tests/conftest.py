@@ -4,7 +4,8 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
-# Add tests directory to path for importing fixtures
+# Add tests directory to sys.path for fixtures module import
+# This is required for test_bear_ith_edge_cases.py to import fixtures.edge_cases
 tests_dir = Path(__file__).parent
 if str(tests_dir) not in sys.path:
     sys.path.insert(0, str(tests_dir))
@@ -36,12 +37,6 @@ class BearSyntheticNavParams(NamedTuple):
     rally_magnitude_low: float = 0.001
     rally_magnitude_high: float = 0.003
     rally_recovery_prob: float = 0.05
-
-
-@pytest.fixture
-def bear_synthetic_nav_params() -> BearSyntheticNavParams:
-    """Default parameters for synthetic bear NAV generation."""
-    return BearSyntheticNavParams()
 
 
 @pytest.fixture

@@ -66,7 +66,6 @@ from rich.progress import (
 )
 from rich.traceback import install
 from scipy import stats
-from scipy.stats import gmean
 
 from ith_python.paths import (
     ensure_dirs,
@@ -690,12 +689,8 @@ def geometric_mean_of_drawdown(nav_values) -> GeometricMeanDrawdownResult:
     if spike_values.empty:  # Check if spike_values is empty
         geometric_mean = np.nan  # Return NaN or some other appropriate value
     else:
-        geometric_mean = gmean(spike_values)
+        geometric_mean = stats.gmean(spike_values)
     return GeometricMeanDrawdownResult(geometric_mean=geometric_mean)
-
-
-# Backwards compatibility alias for BullExcessGainLossResult (imported from bull_ith_numba)
-ExcessGainLossResult = BullExcessGainLossResult
 
 
 def bull_excess_gain_excess_loss_numba(hurdle, nav):

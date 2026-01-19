@@ -301,7 +301,3 @@ def main():
         # Generate all
         generated = generate_all_validation_pngs(args.output)
         print(f"\nGenerated {len(generated)} validation PNGs in {args.output}")
-
-
-if __name__ == "__main__":
-    main()
