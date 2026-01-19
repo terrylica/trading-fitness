@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "packages/core-rust",
+    "packages/metrics-rust",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/terrylica/trading-fitness"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+proptest = "1.5"
+rstest = "0.23"
+test-case = "3.3"
+approx = "0.5"
+float-cmp = "0.10"
+rust_decimal = "1.36"
+insta = { version = "1.41", features = ["json"] }
+divan = "0.1"
