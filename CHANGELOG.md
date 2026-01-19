@@ -1,3 +1,18 @@
+# [2.0.0](https://github.com/terrylica/trading-fitness/compare/v1.1.0...v2.0.0) (2026-01-19)
+
+
+### Features
+
+* **metrics-rust:** time-agnostic BiLSTM metrics library ([1bff411](https://github.com/terrylica/trading-fitness/commit/1bff41153fe1abdb6490d2dda192238b0faf09f5))
+
+
+### BREAKING CHANGES
+
+* **metrics-rust:** New Rust workspace member requires Cargo.toml at root
+
+SRED-Type: experimental-development
+SRED-Claim: ITH-RANGEBAR-METRICS
+
 # [1.1.0](https://github.com/terrylica/trading-fitness/compare/v1.0.5...v1.1.0) (2026-01-19)
 
 
