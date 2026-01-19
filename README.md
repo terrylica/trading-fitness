@@ -1,37 +1,64 @@
 # Trading Fitness
 
-Polyglot monorepo for trading strategy fitness analysis using ITH (Investment Time Horizon) methodology.
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](packages/ith-python)
+[![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](packages/core-rust)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?logo=typescript&logoColor=white)](packages/core-bun)
+[![Tests](https://img.shields.io/badge/tests-86%20passing-brightgreen)](.)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+Polyglot monorepo for trading strategy fitness analysis using **ITH (Investment Time Horizon)** methodology.
+
+## Overview
+
+ITH analysis evaluates trading strategy fitness by measuring how consistently a strategy generates excess returns above a drawdown-adjusted threshold (TMAEG). This provides a more nuanced view of strategy quality than simple Sharpe ratios.
+
+```
+data/nav_data_custom/*.csv  ──▶  [Analysis Engine]  ──▶  artifacts/results.html
+                                       │
+                    ┌──────────────────┼──────────────────┐
+                    ▼                  ▼                  ▼
+              Python+Numba          Rust            TypeScript
+               (primary)         (compute)          (APIs)
+```
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Prerequisites: mise (https://mise.jdx.dev)
+brew install mise
+
+# Clone and setup
+git clone https://github.com/terrylica/trading-fitness.git
+cd trading-fitness
 mise install
 
-# Run ITH analysis on custom NAV data
+# Run ITH analysis
 mise run analyze
 
 # View results
 open artifacts/results.html
 ```
 
-## Package Structure
+## Packages
 
-| Package        | Language | Purpose                                 |
-| -------------- | -------- | --------------------------------------- |
-| `ith-python`   | Python   | ITH fitness analysis (PRIMARY)          |
-| `core-rust`    | Rust     | Performance-critical code (placeholder) |
-| `core-bun`     | Bun/TS   | Async I/O, APIs (placeholder)           |
-| `shared-types` | Multi    | Cross-language schemas                  |
+| Package                                 | Language       | Tests | Purpose                                    |
+| --------------------------------------- | -------------- | ----- | ------------------------------------------ |
+| [`ith-python`](packages/ith-python)     | Python + Numba | 40    | Primary ITH analysis with JIT acceleration |
+| [`core-rust`](packages/core-rust)       | Rust           | 14    | Native performance-critical computations   |
+| [`core-bun`](packages/core-bun)         | TypeScript/Bun | 32    | Async I/O, APIs, web integrations          |
+| [`shared-types`](packages/shared-types) | JSON Schema    | —     | Cross-language type definitions            |
 
-## Data Flow
+## Performance
 
-```
-data/nav_data_custom/*.csv  -->  [ith-python]  -->  artifacts/synth_ithes/
-                                      |
-                                      v
-                              artifacts/results.html
-```
+Benchmarked on 1M data points (Apple M-series):
+
+| Implementation | ITH Analysis | Total  | vs Baseline |
+| -------------- | ------------ | ------ | ----------- |
+| Python + Numba | 5.5 ms       | 7.7 ms | baseline    |
+| Rust (native)  | 4.0 ms       | 7.3 ms | 1.1x faster |
+| Bun/TypeScript | 10.3 ms      | 24 ms  | 3x slower   |
+
+> Numba JIT compiles to LLVM, making Python competitive with native Rust for numerical workloads.
 
 ## Input Format
 
@@ -41,19 +68,59 @@ Place CSV files with `Date` and `NAV` columns in `data/nav_data_custom/`:
 Date,NAV
 2024-01-01,100.00
 2024-01-02,100.50
+2024-01-03,99.80
 ```
-
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [ITH Methodology](docs/ITH.md)
-- [Logging Contract](docs/LOGGING.md)
 
 ## Tasks
 
 ```bash
-mise run analyze     # Run ITH analysis
-mise run test        # Run tests
-mise run lint        # Lint all packages
-mise run affected    # List affected packages
+mise run analyze          # Run ITH analysis
+mise run test             # Run all tests (86 total)
+mise run lint             # Lint all packages
+mise run affected         # List affected packages
+mise run generate-types   # Generate types from JSON Schema
 ```
+
+## Development
+
+```bash
+# Python package
+cd packages/ith-python && uv run pytest
+
+# Rust package
+cd packages/core-rust && cargo test
+
+# TypeScript package
+cd packages/core-bun && bun test
+```
+
+## Architecture
+
+```
+trading-fitness/
+├── .claude/skills/       # Claude Code automation
+├── packages/
+│   ├── ith-python/       # Primary analysis engine
+│   ├── core-rust/        # Native compute library
+│   ├── core-bun/         # TypeScript/Bun package
+│   └── shared-types/     # JSON Schema definitions
+├── rules/                # ast-grep lint rules
+├── scripts/              # Automation & benchmarks
+└── data/                 # Input NAV data
+```
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — System design and data flow
+- [ITH Methodology](docs/ITH.md) — Investment Time Horizon explained
+- [Logging Contract](docs/LOGGING.md) — NDJSON structured logging
+
+## Key Concepts
+
+- **TMAEG** (Target Maximum Acceptable Excess Gain): Drawdown-based threshold for ITH epochs
+- **ITH Epochs**: Periods where strategy exceeds the TMAEG threshold
+- **ITH Intervals CV**: Coefficient of variation measuring epoch consistency
+
+## License
+
+MIT

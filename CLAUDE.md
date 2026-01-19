@@ -103,6 +103,39 @@ bun test                     # Run tests
 - **sgconfig.yml**: ast-grep rules configuration
 - **.mcp.json**: MCP server definitions
 
+## Git Workflow
+
+This repository uses git-town for branch workflow automation.
+
+**Configuration**:
+
+```bash
+git config git-town.main-branch main
+git config git-town.push-new-branches true
+git config git-town.sync-feature-strategy rebase
+```
+
+**Workflow**:
+
+| Task                  | Command           |
+| --------------------- | ----------------- |
+| Create feature branch | `git town hack`   |
+| Sync with main        | `git town sync`   |
+| Create PR and merge   | `git town ship`   |
+| Switch branches       | `git town switch` |
+
+**Environment**: Uses `read_file()` pattern in mise.toml for GH_TOKEN (prevents process storms).
+
+## SR&ED Documentation
+
+This project tracks SR&ED (Scientific Research & Experimental Development) eligible work for CRA tax credits.
+
+**Commit Types**: `experiment:`, `research:`, `uncertainty:`, `advancement:`, `hypothesis:`, `analysis:`, `iteration:`, `benchmark:`
+
+**Documentation**: [docs/SRED.md](docs/SRED.md)
+
+**Labels**: `sred:uncertainty`, `sred:advancement`, `sred:experiment`, `sred:research`, `sred:eligible`
+
 ## Migration History
 
 Consolidated from:

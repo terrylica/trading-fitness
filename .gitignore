@@ -1,6 +1,8 @@
 # Artifacts (regenerable)
 artifacts/**/*
 !artifacts/.gitkeep
+packages/*/artifacts/
+packages/*/data/golden_test/
 
 # Logs
 logs/**/*
