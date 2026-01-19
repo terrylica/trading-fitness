@@ -12,7 +12,7 @@ from numba import njit
 # Add the ith-python package to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "packages/ith-python/src"))
 
-from ith_python.ith_numba import _excess_gain_excess_loss_numba_original
+from ith_python.bull_ith_numba import _bull_excess_gain_excess_loss_numba
 
 
 @njit
@@ -77,7 +77,7 @@ def benchmark_python_numba(nav: np.ndarray, iterations: int = 100) -> dict:
     # Warm up JIT compilation
     _sharpe_ratio_numba(returns[:100], 252.0, 0.0)
     _max_drawdown_numba(nav[:100])
-    _excess_gain_excess_loss_numba_original(nav[:100], hurdle)
+    _bull_excess_gain_excess_loss_numba(nav[:100], hurdle)
 
     # Benchmark sharpe_ratio
     start = time.perf_counter()
@@ -94,7 +94,7 @@ def benchmark_python_numba(nav: np.ndarray, iterations: int = 100) -> dict:
     # Benchmark excess_gain_excess_loss (ITH)
     start = time.perf_counter()
     for _ in range(iterations):
-        _excess_gain_excess_loss_numba_original(nav, hurdle)
+        _bull_excess_gain_excess_loss_numba(nav, hurdle)
     ith_time = (time.perf_counter() - start) / iterations * 1000
 
     return {

@@ -28,3 +28,8 @@ node_modules/
 # IDE
 .vscode/
 .idea/
+.cursor/
+
+# Tool outputs
+.lychee-results.json
+.link-check-results.md

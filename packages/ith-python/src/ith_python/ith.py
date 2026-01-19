@@ -41,7 +41,6 @@ ensuring your trading performance gets analyzed regardless of synthetic criteria
 from __future__ import annotations
 
 import glob
-import json
 import os
 import shutil
 import sys
@@ -384,18 +383,6 @@ qualified_results = config.qualified_results
 existing_csv_files = glob.glob(str(nav_dir / "*.csv"))
 
 logger.debug(f"{existing_csv_files=}")
-
-
-def load_config(filename="config.json"):
-    """
-    config.json file contains the following:
-    {
-    "api_key": "key_string_here"
-    }
-    """
-    with open(filename, "r") as file:
-        config = json.load(file)
-    return config
 
 
 def generate_synthetic_nav(params: SyntheticNavParams):
@@ -1147,14 +1134,6 @@ def process_nav_data(
             if plot_config.auto_open_live_view:
                 fig.show()
 
-            save_files(
-                fig,
-                filename,
-                output_dir,
-                nav_data,
-                uid,
-                source_file=None if not bypass_thresholds else nav_dir,
-            )
             save_files(
                 fig,
                 filename,

@@ -8,10 +8,10 @@ trading-fitness is a polyglot monorepo for trading strategy fitness analysis.
 
 ```
 packages/
-├── ith-python/    # PRIMARY: ITH fitness analysis
-├── core-rust/     # PLACEHOLDER: performance-critical code
-├── core-bun/      # PLACEHOLDER: async I/O, APIs
-└── shared-types/  # Cross-language type definitions
+├── ith-python/    # PRIMARY: ITH fitness analysis (Python + Numba)
+├── core-rust/     # Performance-critical code (native)
+├── core-bun/      # Async I/O, APIs (TypeScript/Bun)
+└── shared-types/  # Cross-language type definitions (JSON Schema)
 ```
 
 ## Data Flow
