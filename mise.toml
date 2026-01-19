@@ -24,8 +24,16 @@ description = "Test all packages"
 run = "cd packages/ith-python && uv run pytest"
 
 [tasks.analyze]
-description = "Run ITH analysis"
+description = "Run ITH analysis (bull + bear)"
+depends = ["analyze:bull", "analyze:bear"]
+
+[tasks."analyze:bull"]
+description = "Run Bull (long) ITH analysis"
 run = "cd packages/ith-python && uv run python -m ith_python.ith"
+
+[tasks."analyze:bear"]
+description = "Run Bear (short) ITH analysis"
+run = "cd packages/ith-python && uv run python -m ith_python.bear_ith"
 
 [tasks.affected]
 description = "List affected packages"
