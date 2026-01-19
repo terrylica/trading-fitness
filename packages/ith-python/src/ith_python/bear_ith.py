@@ -44,6 +44,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 from loguru import logger
+from numba import njit
 from plotly.graph_objs.layout import XAxis, YAxis
 from plotly.subplots import make_subplots
 from rich.console import Console
@@ -324,6 +325,43 @@ def generate_synthetic_bear_nav(params: BearSyntheticNavParams):
     return nav
 
 
+@njit
+def _sharpe_ratio_helper(
+    returns: np.ndarray, nperiods: float, rf: float = 0.0, annualize: bool = True
+) -> float:
+    """Numba-accelerated Sharpe ratio calculation."""
+    # Filter out NaN values manually (np.isnan not supported in older numba)
+    valid_count = 0
+    for r in returns:
+        if not np.isnan(r):
+            valid_count += 1
+
+    if valid_count < 2:
+        return np.nan
+
+    # Calculate mean
+    total = 0.0
+    for r in returns:
+        if not np.isnan(r):
+            total += r
+    mean_returns = total / valid_count
+
+    # Calculate std dev (sample std)
+    var_sum = 0.0
+    for r in returns:
+        if not np.isnan(r):
+            var_sum += (r - mean_returns) ** 2
+    std_dev = np.sqrt(var_sum / (valid_count - 1))
+
+    if std_dev == 0:
+        return np.nan
+
+    mean_diff = mean_returns - rf
+    if annualize:
+        return np.sqrt(nperiods) * (mean_diff / std_dev)
+    return mean_diff / std_dev
+
+
 def sharpe_ratio_numba(
     returns: np.ndarray,
     granularity: str,
@@ -331,7 +369,7 @@ def sharpe_ratio_numba(
     rf: float = 0.0,
     annualize: bool = True,
 ) -> float:
-    """Calculate Sharpe ratio with annualization."""
+    """Calculate Sharpe ratio with Numba acceleration."""
     trading_year_days = (
         processing_params.trading_year_days_crypto
         if market_type == "crypto"
@@ -345,17 +383,7 @@ def sharpe_ratio_numba(
         raise ValueError(
             "Invalid granularity format. Use '1d', '2d', ..., '1m', '2m', ..."
         )
-
-    valid_returns = returns[~np.isnan(returns)]
-    n = len(valid_returns)
-    if n < 2:
-        return np.nan
-    mean_returns = np.mean(valid_returns)
-    std_dev = np.sqrt(np.sum((valid_returns - mean_returns) ** 2) / (n - 1))
-    if std_dev == 0:
-        return np.nan
-    mean_diff = mean_returns - rf
-    return np.sqrt(nperiods) * (mean_diff / std_dev) if annualize else mean_diff / std_dev
+    return _sharpe_ratio_helper(returns, nperiods, rf, annualize)
 
 
 class MaxRunupResult(NamedTuple):

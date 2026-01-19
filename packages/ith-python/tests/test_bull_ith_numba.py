@@ -8,6 +8,7 @@ from ith_python.bull_ith_numba import (
     BullExcessGainLossResult,
     bull_excess_gain_excess_loss,
     generate_synthetic_nav,
+    max_drawdown,
 )
 
 
@@ -29,6 +30,13 @@ class TestBullExcessGainLossResult:
         assert hasattr(result, "num_of_bull_epochs")
         assert hasattr(result, "bull_epochs")
         assert hasattr(result, "bull_intervals_cv")
+
+    def test_result_is_immutable(self, sample_nav_array: np.ndarray):
+        """BullExcessGainLossResult should be immutable (NamedTuple)."""
+        result = bull_excess_gain_excess_loss(sample_nav_array, 0.05)
+
+        with pytest.raises(AttributeError):
+            result.num_of_bull_epochs = 999
 
 
 class TestBullExcessGainExcessLoss:
@@ -114,3 +122,32 @@ class TestGenerateSyntheticNav:
         """NAV values should be positive."""
         nav = generate_synthetic_nav()
         assert (nav["NAV"] > 0).all()
+
+
+class TestMaxDrawdown:
+    """Tests for max_drawdown() function."""
+
+    def test_pure_uptrend_zero_drawdown(self):
+        """Uptrend should have near-zero drawdown."""
+        nav = np.array([100.0, 101.0, 102.0, 103.0, 104.0, 105.0])
+        result = max_drawdown(nav)
+        assert result == 0.0
+
+    def test_pure_downtrend_positive_drawdown(self):
+        """Downtrend should have positive drawdown."""
+        nav = np.array([100.0, 95.0, 90.0, 85.0, 80.0])
+        result = max_drawdown(nav)
+        assert result == pytest.approx(0.20, rel=0.01)
+
+    def test_recovery_preserves_max(self):
+        """Max drawdown should be preserved after recovery."""
+        nav = np.array([100.0, 90.0, 80.0, 90.0, 100.0, 110.0])
+        result = max_drawdown(nav)
+        assert result == pytest.approx(0.20, rel=0.01)
+
+    def test_drawdown_bounded(self):
+        """Drawdown should be in [0, 1) range."""
+        np.random.seed(42)
+        nav = np.cumprod(1 + np.random.randn(100) * 0.02) * 100
+        result = max_drawdown(nav)
+        assert 0 <= result < 1

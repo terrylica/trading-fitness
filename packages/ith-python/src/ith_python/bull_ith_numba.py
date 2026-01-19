@@ -9,7 +9,7 @@ The algorithm tracks:
 
 SR&ED: Refactored from ith_numba.py for symmetric bull/bear naming.
 SRED-Type: experimental-development
-SRED-Claim: BEAR-ITH
+SRED-Claim: BULL-ITH
 """
 
 from __future__ import annotations
@@ -215,19 +215,3 @@ def generate_synthetic_nav(
     nav = pd.DataFrame(data=walk, index=dates, columns=["NAV"])
     nav.index.name = "Date"
     return nav
-
-
-if __name__ == "__main__":
-    # Generate synthetic NAV data and test the function
-    print("=== Bull ITH Algorithm Test ===")
-    print()
-
-    nav = generate_synthetic_nav()
-    hurdle = 0.05
-
-    result = bull_excess_gain_excess_loss(nav["NAV"].values, hurdle)
-    print(f"NAV length: {len(nav)}")
-    print(f"Max drawdown: {max_drawdown(nav['NAV'].values):.4f}")
-    print(f"Bull epochs: {result.num_of_bull_epochs}")
-    print(f"Epoch indices: {list(np.where(result.bull_epochs)[0])}")
-    print(f"Bull intervals CV: {result.bull_intervals_cv:.4f}")

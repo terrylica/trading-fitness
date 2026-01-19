@@ -76,6 +76,13 @@ from ith_python.paths import (
     get_synth_bull_ithes_dir,
 )
 
+# Import canonical Bull ITH algorithm from bull_ith_numba module
+from ith_python.bull_ith_numba import (
+    BullExcessGainLossResult,
+    bull_excess_gain_excess_loss,
+    max_drawdown as _max_drawdown_numba,
+)
+
 # === Module initialization ===
 
 # Install rich traceback for better error display
@@ -385,6 +392,46 @@ existing_csv_files = glob.glob(str(nav_dir / "*.csv"))
 logger.debug(f"{existing_csv_files=}")
 
 
+@njit
+def _apply_drawdown_events(
+    daily_returns: np.ndarray,
+    drawdown_prob: float,
+    drawdown_magnitude_low: float,
+    drawdown_magnitude_high: float,
+    drawdown_recovery_prob: float,
+) -> np.ndarray:
+    """Numba-accelerated drawdown event simulation.
+
+    Modifies daily_returns in place to add drawdown events.
+
+    Args:
+        daily_returns: Array of daily returns to modify
+        drawdown_prob: Probability of entering a drawdown
+        drawdown_magnitude_low: Lower bound of drawdown magnitude
+        drawdown_magnitude_high: Upper bound of drawdown magnitude
+        drawdown_recovery_prob: Probability of recovering from a drawdown
+
+    Returns:
+        Modified daily_returns array with drawdown events applied
+    """
+    n = len(daily_returns)
+    drawdown = False
+
+    for i in range(n):
+        if drawdown:
+            # Drawdown subtracts from returns (price goes down temporarily)
+            magnitude = drawdown_magnitude_low + np.random.random() * (
+                drawdown_magnitude_high - drawdown_magnitude_low
+            )
+            daily_returns[i] -= magnitude
+            if np.random.random() < drawdown_recovery_prob:
+                drawdown = False
+        elif np.random.random() < drawdown_prob:
+            drawdown = True
+
+    return daily_returns
+
+
 def generate_synthetic_nav(params: SyntheticNavParams):
     """Generate synthetic NAV data with bull market characteristics.
 
@@ -401,18 +448,14 @@ def generate_synthetic_nav(params: SyntheticNavParams):
         size=len(dates),
     )
 
-    # Add drawdowns (dips in bull market)
-    drawdown = False
-    for i in range(len(dates)):
-        if drawdown:
-            # Drawdown subtracts from returns (price goes down temporarily)
-            daily_returns[i] -= np.random.uniform(
-                params.drawdown_magnitude_low, params.drawdown_magnitude_high
-            )
-            if np.random.rand() < params.drawdown_recovery_prob:
-                drawdown = False
-        elif np.random.rand() < params.drawdown_prob:
-            drawdown = True
+    # Add drawdowns using Numba-accelerated function
+    daily_returns = _apply_drawdown_events(
+        daily_returns,
+        params.drawdown_prob,
+        params.drawdown_magnitude_low,
+        params.drawdown_magnitude_high,
+        params.drawdown_recovery_prob,
+    )
 
     # Use MULTIPLICATIVE returns: NAV = cumprod(1 + returns)
     # This guarantees NAV stays positive (unlike additive cumsum)
@@ -473,8 +516,9 @@ class MaxDrawdownResult(NamedTuple):
 
 
 def max_drawdown(nav_values) -> MaxDrawdownResult:
-    max_drawdown = np.max(1 - nav_values / np.maximum.accumulate(nav_values))
-    return MaxDrawdownResult(max_drawdown=max_drawdown)
+    """Calculate maximum drawdown using canonical Numba-accelerated function."""
+    mdd = _max_drawdown_numba(nav_values)
+    return MaxDrawdownResult(max_drawdown=mdd)
 
 
 def save_files(fig, filename, output_dir, nav_data, uid, source_file=None):
@@ -538,19 +582,45 @@ class DeepestTroughsResult(NamedTuple):
     new_high_flag: pd.Series
 
 
-def deepest_troughs_and_new_highs(nav_values, running_max_nav) -> DeepestTroughsResult:
-    deepest_troughs_after_new_high = pd.Series(index=nav_values.index, dtype=float)
-    new_high_flag = pd.Series(index=nav_values.index, dtype=int)
+@njit
+def _deepest_troughs_and_new_highs_numba(
+    nav_values: np.ndarray, running_max_nav: np.ndarray
+):
+    """Numba-accelerated trough tracking after new highs."""
+    n = len(nav_values)
+    deepest_troughs = np.zeros(n, dtype=np.float64)
+    new_high_flag = np.zeros(n, dtype=np.int32)
+
     current_max = running_max_nav[0]
     current_trough = nav_values[0]
-    for i in range(1, len(nav_values)):
+    deepest_troughs[0] = current_trough
+
+    for i in range(1, n):
         if running_max_nav[i] > current_max:
             current_max = running_max_nav[i]
             current_trough = nav_values[i]
             new_high_flag[i] = 1
         elif nav_values[i] < current_trough:
             current_trough = nav_values[i]
-        deepest_troughs_after_new_high[i] = current_trough
+        deepest_troughs[i] = current_trough
+
+    return deepest_troughs, new_high_flag
+
+
+def deepest_troughs_and_new_highs(nav_values, running_max_nav) -> DeepestTroughsResult:
+    """Calculate deepest troughs after new highs using Numba acceleration."""
+    # Convert pandas Series to numpy arrays for Numba
+    nav_arr = nav_values.values if hasattr(nav_values, "values") else nav_values
+    max_arr = running_max_nav.values if hasattr(running_max_nav, "values") else running_max_nav
+
+    # Call Numba-accelerated function
+    troughs_arr, flags_arr = _deepest_troughs_and_new_highs_numba(nav_arr, max_arr)
+
+    # Convert back to pandas Series with proper index
+    index = nav_values.index if hasattr(nav_values, "index") else None
+    deepest_troughs_after_new_high = pd.Series(troughs_arr, index=index, dtype=float)
+    new_high_flag = pd.Series(flags_arr, index=index, dtype=int)
+
     return DeepestTroughsResult(deepest_troughs_after_new_high, new_high_flag)
 
 
@@ -558,22 +628,47 @@ class MaxDDPointsResult(NamedTuple):
     max_dd_points: pd.Series
 
 
-def max_dd_points_after_new_high(drawdowns, new_high_flag) -> MaxDDPointsResult:
-    max_dd_points = pd.Series(np.zeros(len(drawdowns)), index=drawdowns.index)
-    current_max_dd = 0
+@njit
+def _max_dd_points_after_new_high_numba(
+    drawdowns: np.ndarray, new_high_flag: np.ndarray
+) -> np.ndarray:
+    """Numba-accelerated max drawdown point tracking."""
+    n = len(drawdowns)
+    max_dd_points = np.zeros(n, dtype=np.float64)
+    current_max_dd = 0.0
     max_dd_index = -1
-    for i in range(1, len(drawdowns)):
+
+    for i in range(1, n):
         if new_high_flag[i] == 1:
             if max_dd_index != -1:
                 max_dd_points[max_dd_index] = current_max_dd
-            current_max_dd = 0
+            current_max_dd = 0.0
             max_dd_index = -1
         else:
             if drawdowns[i] > current_max_dd:
                 current_max_dd = drawdowns[i]
                 max_dd_index = i
+
+    # Handle final segment
     if max_dd_index != -1:
         max_dd_points[max_dd_index] = current_max_dd
+
+    return max_dd_points
+
+
+def max_dd_points_after_new_high(drawdowns, new_high_flag) -> MaxDDPointsResult:
+    """Calculate max drawdown points after new highs using Numba acceleration."""
+    # Convert pandas Series to numpy arrays for Numba
+    dd_arr = drawdowns.values if hasattr(drawdowns, "values") else drawdowns
+    flag_arr = new_high_flag.values if hasattr(new_high_flag, "values") else new_high_flag
+
+    # Call Numba-accelerated function
+    max_dd_arr = _max_dd_points_after_new_high_numba(dd_arr, flag_arr)
+
+    # Convert back to pandas Series with proper index
+    index = drawdowns.index if hasattr(drawdowns, "index") else None
+    max_dd_points = pd.Series(max_dd_arr, index=index)
+
     return MaxDDPointsResult(max_dd_points)
 
 
@@ -599,88 +694,22 @@ def geometric_mean_of_drawdown(nav_values) -> GeometricMeanDrawdownResult:
     return GeometricMeanDrawdownResult(geometric_mean=geometric_mean)
 
 
-class BullExcessGainLossResult(NamedTuple):
-    """Result of bull excess gain/loss calculation for LONG positions."""
-    excess_gains: np.ndarray
-    excess_losses: np.ndarray
-    num_of_bull_epochs: int
-    bull_epochs: np.ndarray
-    bull_intervals_cv: float
-
-
-# Backwards compatibility alias
+# Backwards compatibility alias for BullExcessGainLossResult (imported from bull_ith_numba)
 ExcessGainLossResult = BullExcessGainLossResult
 
 
-@njit
-def _bull_excess_gain_excess_loss_numba(nav, hurdle):
-    """Numba-accelerated bull epoch detection for LONG positions."""
-    excess_gain = excess_loss = 0
-    excess_gains = [0]
-    excess_losses = [0]
-    excess_gains_at_bull_epoch = [0]
-    last_reset_state = False
-    bull_epochs = [False] * len(nav)
-    endorsing_crest = endorsing_nadir = candidate_crest = candidate_nadir = nav[0]
-    for i, (equity, next_equity) in enumerate(zip(nav[:-1], nav[1:])):
-        if next_equity > candidate_crest:
-            excess_gain = (
-                next_equity / endorsing_crest - 1 if endorsing_crest != 0 else 0
-            )
-            candidate_crest = next_equity
-        if next_equity < candidate_nadir:
-            excess_loss = 1 - next_equity / endorsing_crest
-            candidate_nadir = next_equity
-        reset_candidate_nadir_excess_gain_and_excess_loss = (
-            excess_gain > abs(excess_loss)
-            and excess_gain > hurdle
-            and candidate_crest >= endorsing_crest
-        )
-        if reset_candidate_nadir_excess_gain_and_excess_loss:
-            endorsing_crest = candidate_crest
-            endorsing_nadir = candidate_nadir = equity
-            excess_gains_at_bull_epoch.append(excess_gain if not last_reset_state else 0)
-        else:
-            endorsing_nadir = min(endorsing_nadir, equity)
-            excess_gains_at_bull_epoch.append(0)
-        last_reset_state = reset_candidate_nadir_excess_gain_and_excess_loss
-        excess_gains.append(excess_gain)
-        excess_losses.append(excess_loss)
-        if reset_candidate_nadir_excess_gain_and_excess_loss:
-            excess_gain = excess_loss = 0
-        bull_epoch_condition = (
-            len(excess_gains) > 1
-            and excess_gains[-1] > excess_losses[-1]
-            and excess_gains[-1] > hurdle
-        )
-        bull_epochs[i + 1] = bull_epoch_condition
-    num_of_bull_epochs = bull_epochs.count(True)
-    bull_interval_separators = [i for i, x in enumerate(bull_epochs) if x]
-    bull_interval_separators.insert(0, 0)
-    bull_intervals = np.diff(
-        np.array(bull_interval_separators)
-    )  # Convert to NumPy array before using np.diff
-    bull_intervals_cv = (
-        np.std(bull_intervals) / np.mean(bull_intervals)
-        if len(bull_intervals) > 0
-        else np.nan
-    )
-    return BullExcessGainLossResult(
-        excess_gains=np.array(excess_gains),
-        excess_losses=np.array(excess_losses),
-        num_of_bull_epochs=num_of_bull_epochs,
-        bull_epochs=np.array(bull_epochs),
-        bull_intervals_cv=bull_intervals_cv,
-    )
-
-
 def bull_excess_gain_excess_loss_numba(hurdle, nav):
-    """Wrapper for bull epoch calculation that handles DataFrame input."""
+    """Wrapper for bull epoch calculation that handles DataFrame input.
+
+    NOTE: This wrapper maintains the legacy parameter order (hurdle, nav).
+    The canonical API in bull_ith_numba uses (nav, hurdle).
+    """
     original_df = (
         nav.copy() if isinstance(nav, pd.DataFrame) and "NAV" in nav.columns else None
     )
-    nav = nav["NAV"].values if original_df is not None else nav.values
-    result = _bull_excess_gain_excess_loss_numba(nav, hurdle)
+    nav_array = nav["NAV"].values if original_df is not None else nav.values
+    # Call canonical function with correct parameter order (nav, hurdle)
+    result = bull_excess_gain_excess_loss(nav_array, hurdle)
     if original_df is not None:
         original_df["Excess Gains"] = result.excess_gains
         original_df["Excess Losses"] = result.excess_losses
@@ -690,9 +719,8 @@ def bull_excess_gain_excess_loss_numba(hurdle, nav):
         return result
 
 
-# Backwards compatibility alias
+# Backwards compatibility aliases
 excess_gain_excess_loss_numba = bull_excess_gain_excess_loss_numba
-_excess_gain_excess_loss_numba = _bull_excess_gain_excess_loss_numba
 
 
 def get_first_non_zero_digits(num, digit_count):

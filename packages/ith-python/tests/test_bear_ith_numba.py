@@ -14,7 +14,9 @@ from ith_python.bear_ith_numba import (
     bear_excess_gain_excess_loss,
     max_runup,
 )
-from ith_python.bear_ith import generate_synthetic_bear_nav
+
+# Import BearSyntheticNavParams from conftest for use in tests
+from conftest import BearSyntheticNavParams
 
 
 class TestBearExcessGainLossResult:
@@ -109,73 +111,61 @@ class TestBearExcessGainExcessLoss:
 
 
 class TestGenerateSyntheticBearNav:
-    """Tests for synthetic bear NAV generation."""
+    """Tests for synthetic bear NAV generation using fixtures."""
 
-    def test_generates_dataframe(self):
+    def test_generates_dataframe(self, generate_synthetic_bear_nav_func):
         """Should return a pandas DataFrame."""
-        from ith_python.bear_ith import BearSyntheticNavParams
-
         params = BearSyntheticNavParams(
             start_date="2020-01-01",
             end_date="2020-01-31",
         )
-        nav = generate_synthetic_bear_nav(params)
+        nav = generate_synthetic_bear_nav_func(params)
         assert isinstance(nav, pd.DataFrame)
 
-    def test_has_nav_column(self):
+    def test_has_nav_column(self, generate_synthetic_bear_nav_func):
         """Generated data should have NAV column."""
-        from ith_python.bear_ith import BearSyntheticNavParams
-
         params = BearSyntheticNavParams(
             start_date="2020-01-01",
             end_date="2020-01-31",
         )
-        nav = generate_synthetic_bear_nav(params)
+        nav = generate_synthetic_bear_nav_func(params)
         assert "NAV" in nav.columns
 
-    def test_has_pnl_column(self):
+    def test_has_pnl_column(self, generate_synthetic_bear_nav_func):
         """Generated data should have PnL column."""
-        from ith_python.bear_ith import BearSyntheticNavParams
-
         params = BearSyntheticNavParams(
             start_date="2020-01-01",
             end_date="2020-01-31",
         )
-        nav = generate_synthetic_bear_nav(params)
+        nav = generate_synthetic_bear_nav_func(params)
         assert "PnL" in nav.columns
 
-    def test_has_date_index(self):
+    def test_has_date_index(self, generate_synthetic_bear_nav_func):
         """Generated data should have Date as index."""
-        from ith_python.bear_ith import BearSyntheticNavParams
-
         params = BearSyntheticNavParams(
             start_date="2020-01-01",
             end_date="2020-01-31",
         )
-        nav = generate_synthetic_bear_nav(params)
+        nav = generate_synthetic_bear_nav_func(params)
         assert nav.index.name == "Date"
         assert isinstance(nav.index, pd.DatetimeIndex)
 
-    def test_nav_values_positive(self):
+    def test_nav_values_positive(self, generate_synthetic_bear_nav_func):
         """NAV values should always be positive (multiplicative returns)."""
-        from ith_python.bear_ith import BearSyntheticNavParams
-
         params = BearSyntheticNavParams(
             start_date="2020-01-01",
             end_date="2020-06-30",  # Longer period to test stability
         )
-        nav = generate_synthetic_bear_nav(params)
+        nav = generate_synthetic_bear_nav_func(params)
         assert (nav["NAV"] > 0).all(), "NAV should never go negative"
 
-    def test_bear_trend_generally_declining(self):
+    def test_bear_trend_generally_declining(self, generate_synthetic_bear_nav_func):
         """Bear synthetic NAV should generally decline over time."""
-        from ith_python.bear_ith import BearSyntheticNavParams
-
         params = BearSyntheticNavParams(
             start_date="2020-01-01",
             end_date="2020-12-31",
         )
-        nav = generate_synthetic_bear_nav(params)
+        nav = generate_synthetic_bear_nav_func(params)
 
         # With negative drift, NAV should generally decline
         # (though individual runs may vary due to randomness)

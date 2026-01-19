@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](packages/ith-python)
 [![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=white)](packages/core-rust)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?logo=typescript&logoColor=white)](packages/core-bun)
-[![Tests](https://img.shields.io/badge/tests-86%20passing-brightgreen)](.)
+[![Tests](https://img.shields.io/badge/tests-146%20passing-brightgreen)](.)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Polyglot monorepo for trading strategy fitness analysis using **ITH (Investment Time Horizon)** methodology.
@@ -43,7 +43,7 @@ open artifacts/results.html
 
 | Package                                 | Language       | Tests | Purpose                                    |
 | --------------------------------------- | -------------- | ----- | ------------------------------------------ |
-| [`ith-python`](packages/ith-python)     | Python + Numba | 40    | Primary ITH analysis with JIT acceleration |
+| [`ith-python`](packages/ith-python)     | Python + Numba | 100   | Primary ITH analysis with JIT acceleration |
 | [`core-rust`](packages/core-rust)       | Rust           | 14    | Native performance-critical computations   |
 | [`core-bun`](packages/core-bun)         | TypeScript/Bun | 32    | Async I/O, APIs, web integrations          |
 | [`shared-types`](packages/shared-types) | JSON Schema    | —     | Cross-language type definitions            |
@@ -75,10 +75,15 @@ Date,NAV
 
 ```bash
 mise run analyze          # Run ITH analysis
-mise run test             # Run all tests (86 total)
+mise run test             # Run all tests (146 total)
 mise run lint             # Lint all packages
 mise run affected         # List affected packages
 mise run generate-types   # Generate types from JSON Schema
+
+# Release workflow
+mise run release:preflight  # Validate prerequisites (clean tree, GH_TOKEN, main branch)
+mise run release:version    # Run semantic-release (updates CHANGELOG, tags)
+mise run release:full       # Complete workflow (preflight + version)
 ```
 
 ## Development

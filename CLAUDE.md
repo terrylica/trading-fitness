@@ -15,7 +15,7 @@
 
 | Package        | Language | Purpose                        | Tests |
 | -------------- | -------- | ------------------------------ | ----- |
-| `ith-python`   | Python   | ITH fitness analysis (PRIMARY) | 40    |
+| `ith-python`   | Python   | ITH fitness analysis (PRIMARY) | 100   |
 | `core-rust`    | Rust     | Performance-critical compute   | 14    |
 | `core-bun`     | Bun/TS   | Async I/O, APIs, metrics       | 32    |
 | `shared-types` | Multi    | JSON Schema type definitions   | -     |
