@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/terrylica/trading-fitness/compare/v2.0.0...v2.1.0) (2026-01-20)
+
+
+### Features
+
+* **metrics-rust:** add PyO3 Python bindings for BiLSTM metrics ([705d02c](https://github.com/terrylica/trading-fitness/commit/705d02c08c62623278c9b65eb9b297c543827a71))
+
 # [2.0.0](https://github.com/terrylica/trading-fitness/compare/v1.1.0...v2.0.0) (2026-01-19)
 
 
