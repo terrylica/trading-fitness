@@ -8,9 +8,13 @@ description = "Time-agnostic ITH metrics for BiLSTM feature engineering"
 keywords = ["trading", "metrics", "entropy", "lstm", "quantitative"]
 categories = ["science", "mathematics"]
 
+[lib]
+name = "trading_fitness_metrics"
+crate-type = ["cdylib", "rlib"]
+
 [features]
 default = []
-python = ["pyo3"]
+python = ["pyo3", "numpy"]
 test-utils = []
 
 [dependencies]
@@ -28,5 +32,10 @@ insta.workspace = true
 divan.workspace = true
 
 [dependencies.pyo3]
-version = "0.23"
+version = "0.27"
+optional = true
+features = ["extension-module"]
+
+[dependencies.numpy]
+version = "0.27"
 optional = true

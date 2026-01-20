@@ -1,6 +1,8 @@
 # data-ingestion
 
-Placeholder service for future data ingestion pipelines.
+> Placeholder service for future data ingestion pipelines.
+
+**← [Back to trading-fitness](../../CLAUDE.md)**
 
 ## Status
 

@@ -1,6 +1,8 @@
 # core-bun
 
-High-performance trading fitness calculations in TypeScript/Bun.
+> High-performance trading fitness calculations in TypeScript/Bun.
+
+**← [Back to trading-fitness](../../CLAUDE.md)**
 
 ## Status
 

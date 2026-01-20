@@ -1,6 +1,8 @@
 # ith-python
 
-Primary Python package for ITH (Investment Time Horizon) fitness analysis.
+> Primary Python package for ITH (Investment Time Horizon) fitness analysis.
+
+**← [Back to trading-fitness](../../CLAUDE.md)**
 
 ## Quick Start
 
@@ -34,3 +36,10 @@ uv run python -m ith_python.ith   # Run analysis
 
 Core: pandas, numpy, plotly, scipy, numba, loguru, rich, kaleido
 Dev: pytest, ruff
+
+## Related Documentation
+
+- **Root Overview**: [← trading-fitness](../../CLAUDE.md)
+- **ITH Methodology**: [docs/ITH.md](../../docs/ITH.md)
+- **BiLSTM Metrics**: [metrics-rust](../metrics-rust/CLAUDE.md) (Python bindings available)
+- **Rust ITH**: [core-rust](../core-rust/CLAUDE.md)

@@ -13,12 +13,13 @@
 
 ## Package Map
 
-| Package        | Language | Purpose                        | Tests |
-| -------------- | -------- | ------------------------------ | ----- |
-| `ith-python`   | Python   | ITH fitness analysis (PRIMARY) | 100   |
-| `core-rust`    | Rust     | Performance-critical compute   | 14    |
-| `core-bun`     | Bun/TS   | Async I/O, APIs, metrics       | 32    |
-| `shared-types` | Multi    | JSON Schema type definitions   | -     |
+| Package                                         | Language      | Purpose                           | Tests | Docs                                 |
+| ----------------------------------------------- | ------------- | --------------------------------- | ----- | ------------------------------------ |
+| [ith-python](packages/ith-python/CLAUDE.md)     | Python        | ITH fitness analysis (PRIMARY)    | 100   | [→](packages/ith-python/CLAUDE.md)   |
+| [metrics-rust](packages/metrics-rust/CLAUDE.md) | Rust + Python | BiLSTM metrics with PyO3 bindings | 95    | [→](packages/metrics-rust/CLAUDE.md) |
+| [core-rust](packages/core-rust/CLAUDE.md)       | Rust          | Performance-critical compute      | 14    | [→](packages/core-rust/CLAUDE.md)    |
+| [core-bun](packages/core-bun/CLAUDE.md)         | Bun/TS        | Async I/O, APIs, metrics          | 32    | [→](packages/core-bun/CLAUDE.md)     |
+| [shared-types](packages/shared-types/CLAUDE.md) | Multi         | JSON Schema type definitions      | -     | [→](packages/shared-types/CLAUDE.md) |
 
 ## Data Flow
 
@@ -34,9 +35,10 @@ data/nav_data_custom/*.csv  -->  [ith-python]  -->  artifacts/synth_ithes/
 ```
 trading-fitness/
 ├── .claude/
-│   └── skills/              # Claude Code skill modules
+│   └── skills/              # Claude Code skill modules (Python, Rust, Bun)
 ├── packages/
 │   ├── ith-python/          # Primary Python analysis package
+│   ├── metrics-rust/        # BiLSTM metrics with Python bindings (PyO3)
 │   ├── core-rust/           # Rust performance-critical code
 │   ├── core-bun/            # Bun/TS async I/O, APIs
 │   └── shared-types/        # Cross-language schemas
@@ -58,6 +60,18 @@ ITH analysis evaluates trading strategy fitness using TMAEG (Target Maximum Acce
 - **TMAEG**: Drawdown-based hurdle for counting ITH epochs
 - **ITH Epochs**: Time periods where strategy exceeds performance thresholds
 - **Fitness Criteria**: Minimum epoch count, Sharpe ratio bounds, coefficient of variation
+
+**Deep Dive**: [docs/ITH.md](docs/ITH.md)
+
+## Documentation
+
+| Topic                                          | Location | Purpose                              |
+| ---------------------------------------------- | -------- | ------------------------------------ |
+| [Architecture](docs/ARCHITECTURE.md)           | docs/    | System design, tech stack, data flow |
+| [ITH Methodology](docs/ITH.md)                 | docs/    | Core algorithm and fitness criteria  |
+| [Logging Contract](docs/LOGGING.md)            | docs/    | NDJSON format, structured logging    |
+| [SR&ED Tracking](docs/SRED.md)                 | docs/    | Tax credit evidence and claims       |
+| [Migration Verification](docs/VERIFICATION.md) | docs/    | Consolidation proof (historical)     |
 
 ## MCP Servers
 
@@ -88,6 +102,17 @@ cd packages/core-rust
 cargo check                  # Verify compilation
 cargo test                   # Run tests
 ```
+
+### Rust + Python (metrics-rust)
+
+```bash
+cd packages/metrics-rust
+cargo test                         # Rust tests
+maturin build --features python    # Build Python wheel
+# Install: uv pip install target/wheels/*.whl
+```
+
+**Python Usage**: See [metrics-rust/CLAUDE.md](packages/metrics-rust/CLAUDE.md) for API reference.
 
 ### Bun (core-bun)
 
@@ -130,11 +155,13 @@ git config git-town.sync-feature-strategy rebase
 
 This project tracks SR&ED (Scientific Research & Experimental Development) eligible work for CRA tax credits.
 
-**Commit Types**: `experiment:`, `research:`, `uncertainty:`, `advancement:`, `hypothesis:`, `analysis:`, `iteration:`, `benchmark:`
+**Deep Dive**: [docs/SRED.md](docs/SRED.md)
 
-**Documentation**: [docs/SRED.md](docs/SRED.md)
-
-**Labels**: `sred:uncertainty`, `sred:advancement`, `sred:experiment`, `sred:research`, `sred:eligible`
+| Commit Types                               | Labels                                 |
+| ------------------------------------------ | -------------------------------------- |
+| `experiment:`, `research:`, `uncertainty:` | `sred:uncertainty`, `sred:advancement` |
+| `advancement:`, `hypothesis:`, `analysis:` | `sred:experiment`, `sred:research`     |
+| `iteration:`, `benchmark:`                 | `sred:eligible`                        |
 
 ## Migration History
 

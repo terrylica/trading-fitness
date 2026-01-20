@@ -1,6 +1,8 @@
 # shared-types
 
-Cross-language type definitions for trading-fitness packages.
+> Cross-language type definitions for trading-fitness packages.
+
+**← [Back to trading-fitness](../../CLAUDE.md)**
 
 ## Status
 

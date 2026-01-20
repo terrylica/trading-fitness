@@ -2,11 +2,18 @@
 
 Claude Code skill for Rust development in trading-fitness.
 
+**← [Back to trading-fitness](../../../CLAUDE.md)**
+
+## Package Documentation
+
+- **Core**: [core-rust/CLAUDE.md](../../../packages/core-rust/CLAUDE.md)
+- **Metrics + PyO3**: [metrics-rust/CLAUDE.md](../../../packages/metrics-rust/CLAUDE.md)
+
 ## Triggers
 
-- Rust file changes in `packages/core-rust/`
+- Rust file changes in `packages/core-rust/` or `packages/metrics-rust/`
 - Performance optimization requests
-- cargo commands
+- cargo, maturin commands
 
 ## Guidelines
 

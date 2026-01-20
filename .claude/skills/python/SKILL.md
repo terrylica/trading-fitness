@@ -2,6 +2,13 @@
 
 Claude Code skill for Python development in trading-fitness.
 
+**← [Back to trading-fitness](../../../CLAUDE.md)**
+
+## Package Documentation
+
+- **Primary**: [ith-python/CLAUDE.md](../../../packages/ith-python/CLAUDE.md)
+- **Metrics (PyO3)**: [metrics-rust/CLAUDE.md](../../../packages/metrics-rust/CLAUDE.md)
+
 ## Triggers
 
 - Python file changes in `packages/ith-python/`

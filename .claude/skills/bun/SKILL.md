@@ -2,6 +2,12 @@
 
 Claude Code skill for Bun/TypeScript development in trading-fitness.
 
+**← [Back to trading-fitness](../../../CLAUDE.md)**
+
+## Package Documentation
+
+- [core-bun/CLAUDE.md](../../../packages/core-bun/CLAUDE.md)
+
 ## Triggers
 
 - TypeScript file changes in `packages/core-bun/`

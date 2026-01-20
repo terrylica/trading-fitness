@@ -1,6 +1,8 @@
 # strategy-engine
 
-Placeholder service for future strategy execution engine.
+> Placeholder service for future strategy execution engine.
+
+**← [Back to trading-fitness](../../CLAUDE.md)**
 
 ## Status
 

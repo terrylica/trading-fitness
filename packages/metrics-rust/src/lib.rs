@@ -35,6 +35,9 @@ pub mod nav;
 pub mod risk;
 pub mod types;
 
+#[cfg(feature = "python")]
+mod python;
+
 // Re-export public API (9 price-only metrics)
 pub use entropy::{permutation_entropy, sample_entropy, shannon_entropy};
 pub use fractal::{fractal_dimension, hurst_exponent};

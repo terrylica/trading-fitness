@@ -1,6 +1,8 @@
 # core-rust
 
-High-performance trading fitness calculations in Rust.
+> High-performance trading fitness calculations in Rust.
+
+**← [Back to trading-fitness](../../CLAUDE.md)**
 
 ## Status
 

@@ -1,6 +1,8 @@
 # execution-gateway
 
-Placeholder service for future trade execution gateway.
+> Placeholder service for future trade execution gateway.
+
+**← [Back to trading-fitness](../../CLAUDE.md)**
 
 ## Status
 
