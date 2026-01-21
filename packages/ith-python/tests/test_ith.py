@@ -176,7 +176,7 @@ class TestBullIthConfig:
 
         assert config.delete_everything is False
         assert config.TMAEG == 0.05
-        assert config.bull_epochs_lower_bound == 10
+        assert config.bull_epochs_lower_bound == 5  # Updated for batch generation optimization
         assert config.sr_lower_bound == 0.5
         assert config.sr_upper_bound == 9.9
         assert config.analysis_n_points is None  # Default is date-based mode
