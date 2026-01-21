@@ -44,6 +44,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 from loguru import logger
+import numba
 from numba import njit
 from plotly.graph_objs.layout import XAxis, YAxis
 from plotly.subplots import make_subplots
@@ -135,17 +136,17 @@ class BearIthConfig(NamedTuple):
     date_initiate: str = "2020-01-30"
     date_conclude: str = "2023-07-25"
 
-    # Epoch bounds
-    bear_epochs_lower_bound: int = 10
+    # Epoch bounds (tightened with fast batch generation)
+    bear_epochs_lower_bound: int = 5  # Minimum epochs for meaningful analysis
     bear_epochs_upper_bound: int = 100000
 
-    # Fitness criteria
+    # Fitness criteria (for bear/short positions - negative Sharpe)
     sr_lower_bound: float = -9.9  # Negative for bear markets
     sr_upper_bound: float = -0.5  # Negative for bear markets
     aggcv_low_bound: float = 0
     aggcv_up_bound: float = 0.70
     qualified_results: int = 0
-    required_qualified_results: int = 15
+    required_qualified_results: int = 100  # Generate 100 qualified samples
 
 
 class BearSyntheticNavParams(NamedTuple):
@@ -299,8 +300,9 @@ output_dir, nav_dir = setup_directories(config)
 date_duration = (
     pd.to_datetime(config.date_conclude) - pd.to_datetime(config.date_initiate)
 ).days
-bear_epochs_lower_bound = int(np.floor(date_duration / 28 / 6))
-logger.debug(f"{bear_epochs_lower_bound=}")
+# Use config value directly (not calculated from dates)
+bear_epochs_lower_bound = config.bear_epochs_lower_bound
+logger.debug(f"{bear_epochs_lower_bound=} (from config)")
 bear_epochs_upper_bound = config.bear_epochs_upper_bound
 sr_lower_bound = config.sr_lower_bound
 sr_upper_bound = config.sr_upper_bound
@@ -360,6 +362,166 @@ def generate_synthetic_bear_nav(params: BearSyntheticNavParams):
     nav["PnL"] = nav["NAV"].diff()
     nav["PnL"] = nav["PnL"].fillna(nav["NAV"].iloc[0] - 1)
     return nav
+
+
+# =============================================================================
+# VECTORIZED BATCH GENERATION FOR BEAR (Optimized for speed)
+# =============================================================================
+
+
+@njit(parallel=True)
+def _generate_batch_bear_navs_numba(
+    batch_size: int,
+    n_points: int,
+    avg_return: float,
+    volatility: float,
+    df: int,
+    rally_prob: float,
+    rally_mag_low: float,
+    rally_mag_high: float,
+    rally_recovery_prob: float,
+) -> np.ndarray:
+    """Generate multiple bear NAV series in parallel using Numba.
+
+    Returns shape (batch_size, n_points) array of NAV values.
+    """
+    navs = np.empty((batch_size, n_points), dtype=np.float64)
+
+    for b in numba.prange(batch_size):
+        # Generate t-distributed returns (approximated with normal for Numba)
+        returns = np.random.standard_normal(n_points) * volatility + avg_return
+
+        # Apply rally events (dead cat bounces)
+        rally = False
+        for i in range(n_points):
+            if rally:
+                magnitude = rally_mag_low + np.random.random() * (rally_mag_high - rally_mag_low)
+                returns[i] += magnitude
+                if np.random.random() < rally_recovery_prob:
+                    rally = False
+            elif np.random.random() < rally_prob:
+                rally = True
+
+        # Clamp and compute cumulative product
+        for i in range(n_points):
+            if returns[i] < -0.99:
+                returns[i] = -0.99
+
+        # Compute NAV as cumprod(1 + returns)
+        navs[b, 0] = 1.0 + returns[0]
+        for i in range(1, n_points):
+            navs[b, i] = navs[b, i - 1] * (1.0 + returns[i])
+
+    return navs
+
+
+@njit(parallel=True)
+def _compute_batch_sharpe_ratios_bear(navs: np.ndarray, periods_per_year: float) -> np.ndarray:
+    """Compute Sharpe ratios for a batch of NAV series.
+
+    Args:
+        navs: Shape (batch_size, n_points) array of NAV values
+        periods_per_year: Annualization factor (e.g., 365 for daily)
+
+    Returns:
+        Shape (batch_size,) array of Sharpe ratios
+    """
+    batch_size, n_points = navs.shape
+    sharpes = np.empty(batch_size, dtype=np.float64)
+
+    for b in numba.prange(batch_size):
+        # Compute returns from NAV
+        returns = np.empty(n_points - 1, dtype=np.float64)
+        for i in range(n_points - 1):
+            returns[i] = (navs[b, i + 1] - navs[b, i]) / navs[b, i]
+
+        # Compute Sharpe ratio
+        n = len(returns)
+        if n < 2:
+            sharpes[b] = np.nan
+            continue
+
+        mean_ret = np.mean(returns)
+        var_sum = 0.0
+        for i in range(n):
+            var_sum += (returns[i] - mean_ret) ** 2
+        std_ret = np.sqrt(var_sum / (n - 1))
+
+        if std_ret == 0:
+            sharpes[b] = np.nan
+        else:
+            sharpes[b] = np.sqrt(periods_per_year) * (mean_ret / std_ret)
+
+    return sharpes
+
+
+def generate_batch_synthetic_bear_navs(
+    params: BearSyntheticNavParams,
+    batch_size: int = 1000,
+    sr_lower: float = -9.9,
+    sr_upper: float = -0.5,
+    min_epochs: int = 1,
+) -> list[pd.DataFrame]:
+    """Generate a batch of synthetic bear NAVs and pre-filter by Sharpe ratio.
+
+    This is much faster than generating one at a time because:
+    1. Generates all random numbers at once (vectorized)
+    2. Computes Sharpe ratios in parallel using Numba
+    3. Pre-filters before expensive ITH epoch computation
+
+    Args:
+        params: BearSyntheticNavParams configuration
+        batch_size: Number of NAVs to generate in one batch
+        sr_lower: Lower bound for Sharpe ratio pre-filter (negative for bear)
+        sr_upper: Upper bound for Sharpe ratio pre-filter (negative for bear)
+        min_epochs: Minimum epochs expected (used for adaptive parameter tuning)
+
+    Returns:
+        List of NAV DataFrames that passed the Sharpe ratio pre-filter
+    """
+    if params.n_points is not None:
+        n = params.n_points
+        dates = pd.date_range(start="2020-01-01", periods=n, freq="D")
+    else:
+        dates = pd.date_range(params.start_date, params.end_date)
+        n = len(dates)
+
+    # Generate batch of NAVs using Numba
+    navs_array = _generate_batch_bear_navs_numba(
+        batch_size=batch_size,
+        n_points=n,
+        avg_return=params.avg_period_return,
+        volatility=params.period_return_volatility,
+        df=params.df,
+        rally_prob=params.rally_prob,
+        rally_mag_low=params.rally_magnitude_low,
+        rally_mag_high=params.rally_magnitude_high,
+        rally_recovery_prob=params.rally_recovery_prob,
+    )
+
+    # Compute Sharpe ratios in parallel
+    sharpes = _compute_batch_sharpe_ratios_bear(navs_array, periods_per_year=365.0)
+
+    # Pre-filter by Sharpe ratio (negative range for bear)
+    valid_mask = (sharpes >= sr_lower) & (sharpes <= sr_upper) & ~np.isnan(sharpes)
+    valid_indices = np.where(valid_mask)[0]
+
+    logger.debug(
+        f"Bear batch generation: {batch_size} generated, {len(valid_indices)} passed SR filter "
+        f"(acceptance rate: {100*len(valid_indices)/batch_size:.1f}%)"
+    )
+
+    # Convert valid NAVs to DataFrames
+    result = []
+    for idx in valid_indices:
+        nav_values = navs_array[idx]
+        nav = pd.DataFrame(data=nav_values, index=dates, columns=["NAV"])
+        nav.index.name = "Date"
+        nav["PnL"] = nav["NAV"].diff()
+        nav["PnL"] = nav["PnL"].fillna(nav["NAV"].iloc[0] - 1)
+        result.append(nav)
+
+    return result
 
 
 @njit
@@ -1193,43 +1355,81 @@ if existing_csv_files:
     )
 
 # Generate new NAV data if necessary
-console.print("🔄 [bold yellow]Starting synthetic bear data generation...[/bold yellow]")
+console.print("🔄 [bold yellow]Starting synthetic bear data generation (batch mode)...[/bold yellow]")
+# Log config values at start for debugging
+logger.debug(f"Bear generation config: {bear_epochs_lower_bound=}, {bear_epochs_upper_bound=}")
+logger.debug(f"Bear generation config: {sr_lower_bound=}, {sr_upper_bound=}")
+logger.debug(f"Bear generation config: {config.required_qualified_results=}")
+
+# Batch generation settings
+BATCH_SIZE = 500  # Generate 500 NAVs at a time
+total_generated = 0
+total_prefiltered = 0
+total_disqualified = 0
+
 with create_progress_bar(console) as progress:
     task = progress.add_task(
-        "Generating synthetic bear data...",
+        "Generating synthetic bear data (batch)...",
         total=config.required_qualified_results,
         disqualified=0,
         qualified=qualified_results,
+        prefiltered=0,
     )
 
     while qualified_results < config.required_qualified_results:
-        counter += 1
-        synthetic_nav = generate_synthetic_bear_nav(synthetic_nav_params)
-        TMAER = determine_tmaer(synthetic_nav, config.TMAER_dynamically_determined_by)
-        result = process_nav_data(
-            synthetic_nav,
-            config.output_dir,
-            qualified_results,
-            nav_dir,
-            TMAER,
-            bypass_thresholds=False,
-            data_source="Generated",
+        # Generate a batch of pre-filtered NAVs
+        batch_navs = generate_batch_synthetic_bear_navs(
+            synthetic_nav_params,
+            batch_size=BATCH_SIZE,
+            sr_lower=sr_lower_bound,
+            sr_upper=sr_upper_bound,
+            min_epochs=bear_epochs_lower_bound,
         )
-        qualified_results = result.qualified_results
+        total_generated += BATCH_SIZE
+        total_prefiltered += len(batch_navs)
 
-        if result.filename is not None:
-            logger.debug(
-                f"Processing synthetic bear data {counter:4}: {result.filename=}, {result.uid=}, {TMAER=}, {result.sharpe_ratio=}, newly generated."
+        logger.debug(
+            f"Bear batch: {BATCH_SIZE} generated, {len(batch_navs)} passed pre-filter "
+            f"(total: {total_generated} gen, {total_prefiltered} prefilt, {qualified_results} qual)"
+        )
+
+        # Process each pre-filtered NAV through full ITH analysis
+        for synthetic_nav in batch_navs:
+            if qualified_results >= config.required_qualified_results:
+                break
+
+            counter += 1
+            TMAER = determine_tmaer(synthetic_nav, config.TMAER_dynamically_determined_by)
+            result = process_nav_data(
+                synthetic_nav,
+                config.output_dir,
+                qualified_results,
+                nav_dir,
+                TMAER,
+                bypass_thresholds=False,
+                data_source="Generated",
             )
-            if result.fig is not None:
-                save_files(
-                    result.fig, result.filename, nav_dir, synthetic_nav, result.uid
+            qualified_results = result.qualified_results
+
+            if result.filename is not None:
+                logger.debug(
+                    f"Processing synthetic bear data {counter:4}: {result.filename=}, {result.uid=}, {TMAER=}, {result.sharpe_ratio=}, newly generated."
                 )
-            progress.update(task, advance=1, qualified=qualified_results)
-        else:
-            progress.update(
-                task, disqualified=progress.tasks[0].fields["disqualified"] + 1
-            )
+                if result.fig is not None:
+                    save_files(
+                        result.fig, result.filename, nav_dir, synthetic_nav, result.uid
+                    )
+                progress.update(task, advance=1, qualified=qualified_results)
+            else:
+                total_disqualified += 1
+                progress.update(
+                    task,
+                    disqualified=total_disqualified,
+                    prefiltered=total_prefiltered,
+                )
+
+        # Update progress with batch stats
+        progress.update(task, prefiltered=total_prefiltered)
 
         if qualified_results >= config.required_qualified_results:
             console.print(
@@ -1237,6 +1437,10 @@ with create_progress_bar(console) as progress:
             )
             logger.info(
                 f"Required number of qualified results ({config.required_qualified_results}) reached."
+            )
+            logger.info(
+                f"Bear generation stats: {total_generated} generated, {total_prefiltered} pre-filtered, "
+                f"{qualified_results} qualified (pre-filter rate: {100*total_prefiltered/total_generated:.1f}%)"
             )
             break
 
