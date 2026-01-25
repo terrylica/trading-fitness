@@ -13,19 +13,20 @@
 | Build (Python)   | `maturin build --features python`              |
 | Develop (Python) | `maturin develop --features python`            |
 
-## Module Map (9 Price-Only Metrics + Rolling ITH)
+## Module Map (9 Price-Only Metrics + Rolling/Multi-Scale ITH)
 
-| Module             | Metrics                          | Output Range |
-| ------------------ | -------------------------------- | ------------ |
-| `entropy.rs`       | Permutation, Sample, Shannon     | [0, 1]       |
-| `risk.rs`          | Omega, Ulcer, GK Vol, Kaufman ER | [0, 1]       |
-| `fractal.rs`       | Hurst, Fractal Dimension         | [0, 1]       |
-| `ith.rs`           | Bull ITH, Bear ITH               | epochs       |
-| `ith_rolling.rs`   | Rolling window ITH features      | [0, 1]       |
-| `ith_normalize.rs` | Bounded normalization utilities  | [0, 1]       |
-| `nav.rs`           | NAV construction                 | prices       |
-| `adaptive.rs`      | Utilities (no magic numbers)     | various      |
-| `python.rs`        | PyO3 bindings                    | -            |
+| Module              | Metrics                          | Output Range |
+| ------------------- | -------------------------------- | ------------ |
+| `entropy.rs`        | Permutation, Sample, Shannon     | [0, 1]       |
+| `risk.rs`           | Omega, Ulcer, GK Vol, Kaufman ER | [0, 1]       |
+| `fractal.rs`        | Hurst, Fractal Dimension         | [0, 1]       |
+| `ith.rs`            | Bull ITH, Bear ITH               | epochs       |
+| `ith_rolling.rs`    | Rolling window ITH features      | [0, 1]       |
+| `ith_multiscale.rs` | Multi-scale ITH (Arrow-native)   | [0, 1]       |
+| `ith_normalize.rs`  | Bounded normalization utilities  | [0, 1]       |
+| `nav.rs`            | NAV construction                 | prices       |
+| `adaptive.rs`       | Utilities (no magic numbers)     | various      |
+| `python.rs`         | PyO3 bindings                    | -            |
 
 ## Data Requirements
 

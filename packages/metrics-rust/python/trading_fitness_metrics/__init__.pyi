@@ -1,6 +1,6 @@
 """Type stubs for trading-fitness-metrics."""
 
-from typing import Sequence, overload
+from typing import Sequence, overload, Any
 import numpy as np
 from numpy.typing import NDArray
 
@@ -646,5 +646,173 @@ def compute_all_metrics(
 
     Raises:
         ValueError: If arrays are too short or OHLC is invalid
+    """
+    ...
+
+# ============================================================================
+# Multi-Scale ITH Features (Arrow-Native Integration)
+# ============================================================================
+
+class MultiscaleIthConfig:
+    """Configuration for multi-scale ITH computation.
+
+    Column Naming Convention:
+        Output columns follow the pattern: `ith_rb{threshold}_lb{lookback}_{feature}`
+        - threshold: Range bar threshold in dbps (for column naming only)
+        - lookback: Lookback window in bars
+        - feature: Short feature name (e.g., `bull_ed`, `max_dd`)
+
+    Feature Short Names:
+        | Full Name | Short Name |
+        |-----------|------------|
+        | bull_epoch_density | bull_ed |
+        | bear_epoch_density | bear_ed |
+        | bull_excess_gain | bull_eg |
+        | bear_excess_gain | bear_eg |
+        | bull_cv | bull_cv |
+        | bear_cv | bear_cv |
+        | max_drawdown | max_dd |
+        | max_runup | max_ru |
+    """
+
+    def __init__(
+        self,
+        threshold_dbps: int = 250,
+        lookbacks: list[int] | None = None,
+    ) -> None:
+        """
+        Create a new multi-scale ITH configuration.
+
+        Args:
+            threshold_dbps: Range bar threshold in dbps (for column naming only)
+            lookbacks: List of lookback window sizes
+                       (default: [20, 50, 100, 200, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000])
+        """
+        ...
+
+    @property
+    def threshold_dbps(self) -> int:
+        """Get the threshold in dbps."""
+        ...
+
+    @property
+    def lookbacks(self) -> list[int]:
+        """Get the list of lookback windows."""
+        ...
+
+
+class MultiscaleIthFeatures:
+    """Multi-scale ITH features across multiple lookback windows.
+
+    Contains features for all lookback × feature combinations.
+    All values are bounded [0, 1] for LSTM consumption.
+
+    Column naming follows: `ith_rb{threshold}_lb{lookback}_{feature}`
+
+    Example:
+        >>> import polars as pl
+        >>> from trading_fitness_metrics import compute_multiscale_ith
+        >>>
+        >>> features = compute_multiscale_ith(nav, config)
+        >>> df = pl.from_arrow(features.to_arrow())  # Zero-copy!
+    """
+
+    @property
+    def n_points(self) -> int:
+        """Get the number of data points."""
+        ...
+
+    @property
+    def n_features(self) -> int:
+        """Get the number of feature columns."""
+        ...
+
+    @property
+    def config(self) -> MultiscaleIthConfig:
+        """Get the configuration used for computation."""
+        ...
+
+    def to_arrow(self) -> Any:
+        """
+        Convert to Arrow RecordBatch (zero-copy via PyCapsule Interface).
+
+        This method provides efficient zero-copy integration with Polars:
+
+        Example:
+            >>> import polars as pl
+            >>> df = pl.from_arrow(features.to_arrow())  # Zero-copy!
+
+        Returns:
+            Arrow RecordBatch compatible with Polars, PyArrow, etc.
+        """
+        ...
+
+    def get(self, column_name: str) -> NDArray[np.float64]:
+        """
+        Get a feature array by column name.
+
+        Args:
+            column_name: Name of the column (e.g., 'ith_rb250_lb100_bull_ed')
+
+        Returns:
+            NumPy array of feature values
+
+        Raises:
+            ValueError: If column name not found
+        """
+        ...
+
+    def column_names(self) -> list[str]:
+        """Get all column names (sorted)."""
+        ...
+
+    def all_bounded(self) -> bool:
+        """Check if all features are bounded [0, 1]."""
+        ...
+
+    def __len__(self) -> int:
+        """Get the number of data points."""
+        ...
+
+
+def compute_multiscale_ith(
+    nav: NDArray[np.float64] | Sequence[float],
+    config: MultiscaleIthConfig | None = None,
+) -> MultiscaleIthFeatures:
+    """
+    Compute multi-scale ITH features across multiple lookback windows.
+
+    This function computes rolling ITH features at multiple lookback scales,
+    producing columnar outputs suitable for LSTM feature engineering.
+
+    All features are bounded [0, 1] and follow the naming convention:
+    `ith_rb{threshold}_lb{lookback}_{feature}`
+
+    Args:
+        nav: Array of NAV values
+        config: MultiscaleIthConfig with threshold and lookbacks
+                (default: 250 dbps, lookbacks [20, 50, 100, ..., 6000])
+
+    Returns:
+        MultiscaleIthFeatures with zero-copy Arrow conversion via `to_arrow()`.
+
+    Raises:
+        ValueError: If nav array is empty
+
+    Example:
+        >>> import polars as pl
+        >>> import numpy as np
+        >>> from trading_fitness_metrics import compute_multiscale_ith, MultiscaleIthConfig
+        >>>
+        >>> nav = np.cumprod(1 + np.random.randn(5000) * 0.01)
+        >>> config = MultiscaleIthConfig(threshold_dbps=250, lookbacks=[100, 500, 1000])
+        >>> features = compute_multiscale_ith(nav, config)
+        >>>
+        >>> # Zero-copy conversion to Polars
+        >>> df = pl.from_arrow(features.to_arrow())
+        >>> print(df.columns)  # ['ith_rb250_lb100_bull_ed', ...]
+        >>>
+        >>> # Or get individual feature arrays
+        >>> bull_ed_100 = features.get('ith_rb250_lb100_bull_ed')
     """
     ...

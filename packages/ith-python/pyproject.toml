@@ -19,11 +19,27 @@ dependencies = [
 validation = [
     "rangebar",  # For validation testing with real range bars
 ]
+examination = [
+    # Polars-first: Core data manipulation
+    "polars>=1.37.1",
+    # Statistical testing (scipy for tests, NOT pingouin which requires pandas)
+    "scipy>=1.17.0",
+    # Feature analysis (numpy bridge only, no pandas)
+    "scikit-learn>=1.7.0",
+    "shap>=0.47.2",
+    "lightgbm>=4.6.0",  # Required by SHAP TreeExplainer
+    # Validation (Polars-native)
+    "pandera[polars]>=0.23.1",
+]
 
 [dependency-groups]
 dev = [
+    "polars>=1.37.1",
     "pytest>=9.0.2",
     "ruff>=0.14.12",
+    "trading-fitness-metrics",
+    "rangebar",  # Symmetric dogfooding: validate ITH metrics on real range bars
+    "scikit-learn>=1.8.0",
 ]
 
 [build-system]
@@ -34,5 +50,5 @@ build-backend = "hatchling.build"
 packages = ["src/ith_python"]
 
 [tool.uv.sources]
-trading-fitness-metrics = { path = "../../target/wheels/trading_fitness_metrics-0.1.0-cp313-cp313-macosx_11_0_arm64.whl" }
 rangebar = { git = "https://github.com/terrylica/rangebar-py", branch = "main" }
+trading-fitness-metrics = { path = "../metrics-rust" }

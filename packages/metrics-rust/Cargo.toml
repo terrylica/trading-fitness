@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
-python = ["pyo3", "numpy"]
+python = ["pyo3", "numpy", "pyo3-arrow", "arrow-array", "arrow-schema"]
 test-utils = []
 instrumented = ["serde_json", "chrono"]
 
@@ -49,3 +49,16 @@ optional = true
 version = "0.4"
 optional = true
 features = ["serde"]
+
+[dependencies.arrow-array]
+version = "57"
+optional = true
+features = ["ffi"]
+
+[dependencies.arrow-schema]
+version = "57"
+optional = true
+
+[dependencies.pyo3-arrow]
+version = "0.15"
+optional = true

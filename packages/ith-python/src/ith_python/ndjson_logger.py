@@ -93,7 +93,9 @@ class NDJSONFormatter:
                     "value": str(exc.value) if exc.value else None,
                 }
 
-            return json.dumps(log_entry, default=str) + "\n"
+            # Escape braces for loguru format_map() - {{ and }} become literal { and }
+            json_str = json.dumps(log_entry, default=str)
+            return json_str.replace("{", "{{").replace("}", "}}") + "\n"
 
         except (TypeError, ValueError, KeyError, AttributeError) as e:
             # Graceful degradation for serialization/access errors
@@ -105,7 +107,8 @@ class NDJSONFormatter:
                 "component": self.component,
                 "trace_id": get_trace_id(),
             }
-            return json.dumps(fallback) + "\n"
+            json_str = json.dumps(fallback)
+            return json_str.replace("{", "{{").replace("}", "}}") + "\n"
 
 
 def setup_ndjson_logger(

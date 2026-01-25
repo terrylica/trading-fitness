@@ -24,6 +24,12 @@ ITH Analysis:
     - bull_ith: Long position profitability analysis
     - bear_ith: Short position profitability analysis
     - compute_rolling_ith: Rolling window ITH features (time-agnostic, bounded [0, 1])
+    - compute_multiscale_ith: Multi-scale ITH features across multiple lookback windows
+
+Multi-Scale ITH (Arrow-Native):
+    - compute_multiscale_ith: Compute ITH features at multiple lookback scales
+    - MultiscaleIthConfig: Configuration for multi-scale computation
+    - MultiscaleIthFeatures: Container with to_arrow() for zero-copy Polars integration
 
 Example:
     >>> import numpy as np
@@ -62,6 +68,10 @@ from trading_fitness_metrics._core import (
     bull_ith,
     bear_ith,
     compute_rolling_ith,
+    # Multi-scale ITH (Arrow-native)
+    compute_multiscale_ith,
+    MultiscaleIthConfig,
+    MultiscaleIthFeatures,
     # Classes
     RollingIthFeatures,
     # Batch API
@@ -99,6 +109,10 @@ __all__ = [
     "bull_ith",
     "bear_ith",
     "compute_rolling_ith",
+    # Multi-scale ITH (Arrow-native)
+    "compute_multiscale_ith",
+    "MultiscaleIthConfig",
+    "MultiscaleIthFeatures",
     # Classes
     "RollingIthFeatures",
     # Batch API

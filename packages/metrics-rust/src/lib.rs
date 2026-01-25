@@ -31,6 +31,7 @@ pub mod adaptive;
 pub mod entropy;
 pub mod fractal;
 pub mod ith;
+pub mod ith_multiscale;
 pub mod ith_normalize;
 pub mod ith_rolling;
 pub mod nav;
@@ -69,6 +70,12 @@ pub use adaptive::{
     adaptive_windows, optimal_bins_freedman_diaconis, optimal_embedding_dimension,
     optimal_sample_entropy_tolerance, optimal_tmaeg, relative_epsilon, AdaptiveTolerance,
     GarmanKlassNormalizer, MinimumSamples, OnlineNormalizer,
+};
+
+// Re-export multi-scale ITH features
+pub use ith_multiscale::{
+    compute_multiscale_ith, compute_multiscale_ith_streaming, MultiscaleConfig,
+    MultiscaleIthFeatures,
 };
 
 // Re-export instrumented ITH (for cross-validation)

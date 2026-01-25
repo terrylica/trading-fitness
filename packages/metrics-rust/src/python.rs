@@ -8,6 +8,7 @@
 use numpy::{PyArray1, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
 use std::cell::RefCell;
 
 // ============================================================================
@@ -915,6 +916,213 @@ fn compute_all_metrics(
 }
 
 // ============================================================================
+// Multi-Scale ITH Features (Arrow-Native Integration)
+// ============================================================================
+
+/// Python wrapper for MultiscaleConfig.
+#[pyclass(name = "MultiscaleIthConfig")]
+#[derive(Clone)]
+pub struct PyMultiscaleConfig {
+    inner: crate::ith_multiscale::MultiscaleConfig,
+}
+
+#[pymethods]
+impl PyMultiscaleConfig {
+    /// Create a new multi-scale ITH configuration.
+    ///
+    /// Args:
+    ///     threshold_dbps: Range bar threshold in dbps (for column naming only)
+    ///     lookbacks: List of lookback window sizes
+    #[new]
+    #[pyo3(signature = (threshold_dbps=250, lookbacks=None))]
+    fn new(threshold_dbps: u32, lookbacks: Option<Vec<usize>>) -> Self {
+        let lookbacks = lookbacks.unwrap_or_else(|| {
+            vec![20, 50, 100, 200, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000]
+        });
+        Self {
+            inner: crate::ith_multiscale::MultiscaleConfig::new(threshold_dbps, lookbacks),
+        }
+    }
+
+    /// Get the threshold in dbps.
+    #[getter]
+    fn threshold_dbps(&self) -> u32 {
+        self.inner.threshold_dbps
+    }
+
+    /// Get the list of lookback windows.
+    #[getter]
+    fn lookbacks(&self) -> Vec<usize> {
+        self.inner.lookbacks.clone()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "MultiscaleIthConfig(threshold_dbps={}, lookbacks={:?})",
+            self.inner.threshold_dbps, self.inner.lookbacks
+        )
+    }
+}
+
+/// Python wrapper for MultiscaleIthFeatures.
+///
+/// Provides both dictionary-style access and Arrow RecordBatch conversion
+/// for zero-copy integration with Polars.
+#[pyclass(name = "MultiscaleIthFeatures")]
+#[derive(Clone)]
+pub struct PyMultiscaleIthFeatures {
+    inner: crate::ith_multiscale::MultiscaleIthFeatures,
+}
+
+#[pymethods]
+impl PyMultiscaleIthFeatures {
+    /// Convert to Arrow RecordBatch (zero-copy via PyCapsule Interface).
+    ///
+    /// This method provides efficient zero-copy integration with Polars:
+    /// ```python
+    /// import polars as pl
+    /// from trading_fitness_metrics import compute_multiscale_ith
+    ///
+    /// features = compute_multiscale_ith(nav, config)
+    /// df = pl.from_arrow(features.to_arrow())  # Zero-copy!
+    /// ```
+    fn to_arrow(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        use arrow_array::{Float64Array, RecordBatch};
+        use arrow_schema::{DataType, Field, Schema};
+        use pyo3_arrow::PyRecordBatch;
+        use std::sync::Arc;
+
+        // Sort column names for deterministic order
+        let mut column_names: Vec<_> = self.inner.columns.keys().cloned().collect();
+        column_names.sort();
+
+        // Build Arrow schema
+        let fields: Vec<Field> = column_names
+            .iter()
+            .map(|name| Field::new(name, DataType::Float64, true))
+            .collect();
+        let schema = Arc::new(Schema::new(fields));
+
+        // Convert Vec<f64> to Arrow Float64Array (copies data once for Arrow ownership)
+        let arrays: Vec<Arc<dyn arrow_array::Array>> = column_names
+            .iter()
+            .map(|name| {
+                let values = self.inner.columns.get(name).unwrap();
+                Arc::new(Float64Array::from(values.clone())) as Arc<dyn arrow_array::Array>
+            })
+            .collect();
+
+        let batch = RecordBatch::try_new(schema, arrays)
+            .map_err(|e| PyValueError::new_err(format!("Failed to create RecordBatch: {}", e)))?;
+
+        // Wrap in PyRecordBatch for zero-copy transfer to Python
+        let py_batch = PyRecordBatch::new(batch);
+        Ok(py_batch.into_pyobject(py)?.into_any().unbind())
+    }
+
+    /// Get a feature array by column name.
+    fn get<'py>(&self, py: Python<'py>, column_name: &str) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        self.inner
+            .columns
+            .get(column_name)
+            .map(|v| PyArray1::from_vec(py, v.clone()))
+            .ok_or_else(|| PyValueError::new_err(format!("Column '{}' not found", column_name)))
+    }
+
+    /// Get all column names.
+    fn column_names(&self) -> Vec<String> {
+        let mut names: Vec<_> = self.inner.columns.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// Get the number of data points.
+    #[getter]
+    fn n_points(&self) -> usize {
+        self.inner.n_points
+    }
+
+    /// Get the number of feature columns.
+    #[getter]
+    fn n_features(&self) -> usize {
+        self.inner.n_features
+    }
+
+    /// Check if all features are bounded [0, 1].
+    fn all_bounded(&self) -> bool {
+        self.inner.all_bounded()
+    }
+
+    /// Get the configuration used for computation.
+    #[getter]
+    fn config(&self) -> PyMultiscaleConfig {
+        PyMultiscaleConfig {
+            inner: self.inner.config.clone(),
+        }
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.n_points
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "MultiscaleIthFeatures(n_points={}, n_features={})",
+            self.inner.n_points, self.inner.n_features
+        )
+    }
+}
+
+/// Compute multi-scale ITH features across multiple lookback windows.
+///
+/// This function computes rolling ITH features at multiple lookback scales,
+/// producing columnar outputs suitable for LSTM feature engineering.
+///
+/// All features are bounded [0, 1] and follow the naming convention:
+/// `ith_rb{threshold}_lb{lookback}_{feature}`
+///
+/// Args:
+///     nav: NumPy array of NAV values (float64)
+///     config: MultiscaleIthConfig with threshold and lookbacks
+///
+/// Returns:
+///     MultiscaleIthFeatures with zero-copy Arrow conversion via `to_arrow()`.
+///
+/// Example:
+///     >>> import polars as pl
+///     >>> from trading_fitness_metrics import compute_multiscale_ith, MultiscaleIthConfig
+///     >>>
+///     >>> nav = np.cumprod(1 + np.random.randn(5000) * 0.01)
+///     >>> config = MultiscaleIthConfig(threshold_dbps=250, lookbacks=[100, 500, 1000])
+///     >>> features = compute_multiscale_ith(nav, config)
+///     >>>
+///     >>> # Zero-copy conversion to Polars
+///     >>> df = pl.from_arrow(features.to_arrow())
+///     >>> print(df.columns)  # ['ith_rb250_lb100_bull_ed', ...]
+#[pyfunction]
+#[pyo3(signature = (nav, config=None))]
+fn compute_multiscale_ith(
+    nav: PyReadonlyArray1<f64>,
+    config: Option<&PyMultiscaleConfig>,
+) -> PyResult<PyMultiscaleIthFeatures> {
+    let slice = nav
+        .as_slice()
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+
+    if slice.is_empty() {
+        return Err(PyValueError::new_err("nav array cannot be empty"));
+    }
+
+    let rust_config = match config {
+        Some(cfg) => cfg.inner.clone(),
+        None => crate::ith_multiscale::MultiscaleConfig::default(),
+    };
+
+    let features = crate::ith_multiscale::compute_multiscale_ith(slice, &rust_config);
+    Ok(PyMultiscaleIthFeatures { inner: features })
+}
+
+// ============================================================================
 // Module Definition
 // ============================================================================
 
@@ -952,6 +1160,9 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Rolling ITH features (time-agnostic, bounded [0, 1])
     m.add_function(wrap_pyfunction!(compute_rolling_ith, m)?)?;
 
+    // Multi-scale ITH features (Arrow-native integration)
+    m.add_function(wrap_pyfunction!(compute_multiscale_ith, m)?)?;
+
     // Batch API
     m.add_function(wrap_pyfunction!(compute_all_metrics, m)?)?;
 
@@ -962,6 +1173,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyGarmanKlassNormalizer>()?;
     m.add_class::<PyOnlineNormalizer>()?;
     m.add_class::<PyMetricsResult>()?;
+    m.add_class::<PyMultiscaleConfig>()?;
+    m.add_class::<PyMultiscaleIthFeatures>()?;
 
     Ok(())
 }

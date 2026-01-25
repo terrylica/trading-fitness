@@ -22,11 +22,15 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Office/Business :: Financial :: Investment",
 ]
-dependencies = ["numpy>=1.20"]
+dependencies = [
+    "numpy>=1.20",
+    "pyarrow>=14.0",  # Arrow PyCapsule support for zero-copy
+]
 dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-benchmark>=4.0"]
+polars = ["polars>=1.0"]  # Optional: for DataFrame integration via to_arrow()
 
 [tool.maturin]
 features = ["python"]

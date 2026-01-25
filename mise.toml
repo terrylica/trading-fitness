@@ -170,3 +170,70 @@ uv run pytest tests/test_rangebar_integration.py -v
 [tasks."validate:ith-features"]
 description = "Full ITH validation: unit tests + rangebar integration"
 depends = ["test:metrics-rust", "test:rolling-ith", "test:ith-normalize", "test:rangebar-validation"]
+
+[tasks."test:multiscale-ith"]
+description = "Test multi-scale ITH feature computation"
+depends = ["develop:metrics-rust"]
+run = """
+cd packages/ith-python
+unset UV_PYTHON
+uv run pytest tests/test_multiscale_ith.py -v
+"""
+
+[tasks."test:multiscale-ith:rust"]
+description = "Test multi-scale ITH (Rust unit tests)"
+run = "cargo nextest run -p trading-fitness-metrics multiscale"
+
+[tasks."bench:multiscale-ith"]
+description = "Benchmark multi-scale ITH computation"
+run = "cargo bench -p trading-fitness-metrics -- multiscale"
+
+# =============================================================================
+# Statistical Examination - ITH Feature Analysis
+# =============================================================================
+
+[tasks."examine:ith-features"]
+description = "Run full statistical examination of ITH features"
+depends = ["develop:metrics-rust"]
+run = """
+cd packages/ith-python
+unset UV_PYTHON
+uv sync --extra examination
+uv run python -m ith_python.statistical_examination.runner \
+    --thresholds 25,50,100,250,500,1000 \
+    --output-dir ../../artifacts/statistical_examination
+"""
+
+[tasks."examine:cross-scale"]
+description = "Cross-scale correlation analysis only"
+depends = ["develop:metrics-rust"]
+run = """
+cd packages/ith-python
+unset UV_PYTHON
+uv sync --extra examination
+uv run python -c "
+from ith_python.statistical_examination.cross_scale import main
+main()
+"
+"""
+
+[tasks."examine:from-parquet"]
+description = "Run examination on pre-computed features Parquet"
+run = """
+cd packages/ith-python
+unset UV_PYTHON
+uv sync --extra examination
+uv run python -m ith_python.statistical_examination.runner \
+    --parquet ../../artifacts/statistical_examination/features.parquet \
+    --output-dir ../../artifacts/statistical_examination
+"""
+
+[tasks."test:statistical-examination"]
+description = "Test statistical examination framework"
+depends = ["develop:metrics-rust"]
+run = """
+cd packages/ith-python
+unset UV_PYTHON
+uv sync --extra examination
+uv run pytest tests/test_statistical_examination/ -v
+"""
