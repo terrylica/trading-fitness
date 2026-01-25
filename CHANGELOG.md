@@ -1,3 +1,11 @@
+# [2.4.0](https://github.com/terrylica/trading-fitness/compare/v2.3.0...v2.4.0) (2026-01-25)
+
+
+### Features
+
+* **ith-python:** add ClickHouse fixture for on-demand cache testing ([0dc100c](https://github.com/terrylica/trading-fitness/commit/0dc100c488666eae20f915bc6a284bc5c3ab57c3))
+* **ith-python:** add statistical examination framework with rectified methods ([91a38ee](https://github.com/terrylica/trading-fitness/commit/91a38eeaff00c969e6486cabe75b950d2cab5831))
+
 # [2.3.0](https://github.com/terrylica/trading-fitness/compare/v2.2.0...v2.3.0) (2026-01-22)
 
 
