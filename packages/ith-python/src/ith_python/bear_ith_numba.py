@@ -158,7 +158,10 @@ def _bear_excess_gain_excess_loss_numba(nav, hurdle):
 
 
 def bear_excess_gain_excess_loss(
-    nav: np.ndarray, hurdle: float
+    nav: np.ndarray,
+    hurdle: float,
+    emit_telemetry: bool = False,
+    timestamps: np.ndarray | None = None,
 ) -> BearExcessGainLossResult:
     """Calculate bear excess gains/losses with typed result.
 
@@ -168,6 +171,8 @@ def bear_excess_gain_excess_loss(
     Args:
         nav: NAV values array
         hurdle: TMAER threshold (Target Maximum Acceptable Excess Runup)
+        emit_telemetry: If True, emit epoch_detected events for each epoch
+        timestamps: Optional array of timestamps for telemetry (ISO format strings)
 
     Returns:
         BearExcessGainLossResult with all calculation outputs
@@ -175,6 +180,44 @@ def bear_excess_gain_excess_loss(
     excess_gains, excess_losses, num_of_bear_epochs, bear_epochs, cv = (
         _bear_excess_gain_excess_loss_numba(nav, hurdle)
     )
+
+    # Emit telemetry for each detected epoch (optional)
+    if emit_telemetry and num_of_bear_epochs > 0:
+        from ith_python.telemetry import log_epoch_detected
+
+        epoch_index = 0
+        # Track state for epoch context
+        endorsing_nadir = nav[0]
+        candidate_crest = nav[0]
+
+        for i in range(len(nav)):
+            if bear_epochs[i]:
+                epoch_index += 1
+                # Get timestamp if available
+                ts = None
+                if timestamps is not None and i < len(timestamps):
+                    ts = str(timestamps[i])
+
+                log_epoch_detected(
+                    epoch_index=epoch_index,
+                    bar_index=i,
+                    excess_gain=float(excess_gains[i]),
+                    excess_loss=float(excess_losses[i]),
+                    endorsing_crest=float(candidate_crest),  # For bear, crest is tracked differently
+                    candidate_nadir=float(endorsing_nadir),
+                    tmaeg_threshold=hurdle,
+                    position_type="bear",
+                    timestamp=ts,
+                    nav_at_epoch=float(nav[i]),
+                )
+                # Update tracked state after epoch
+                endorsing_nadir = nav[i]
+                candidate_crest = nav[i]
+            else:
+                # Track candidate crest for context
+                if nav[i] > candidate_crest:
+                    candidate_crest = nav[i]
+
     return BearExcessGainLossResult(
         excess_gains=excess_gains,
         excess_losses=excess_losses,

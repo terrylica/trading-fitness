@@ -144,7 +144,10 @@ def _bull_excess_gain_excess_loss_numba(nav, hurdle):
 
 
 def bull_excess_gain_excess_loss(
-    nav: np.ndarray, hurdle: float
+    nav: np.ndarray,
+    hurdle: float,
+    emit_telemetry: bool = False,
+    timestamps: np.ndarray | None = None,
 ) -> BullExcessGainLossResult:
     """Calculate bull excess gains/losses with typed result.
 
@@ -154,6 +157,8 @@ def bull_excess_gain_excess_loss(
     Args:
         nav: NAV values array
         hurdle: TMAEG threshold (Target Maximum Acceptable Excess Gain)
+        emit_telemetry: If True, emit epoch_detected events for each epoch
+        timestamps: Optional array of timestamps for telemetry (ISO format strings)
 
     Returns:
         BullExcessGainLossResult with all calculation outputs
@@ -161,6 +166,44 @@ def bull_excess_gain_excess_loss(
     excess_gains, excess_losses, num_of_bull_epochs, bull_epochs, cv = (
         _bull_excess_gain_excess_loss_numba(nav, hurdle)
     )
+
+    # Emit telemetry for each detected epoch (optional)
+    if emit_telemetry and num_of_bull_epochs > 0:
+        from ith_python.telemetry import log_epoch_detected
+
+        epoch_index = 0
+        # Track state for epoch context
+        endorsing_crest = nav[0]
+        candidate_nadir = nav[0]
+
+        for i in range(len(nav)):
+            if bull_epochs[i]:
+                epoch_index += 1
+                # Get timestamp if available
+                ts = None
+                if timestamps is not None and i < len(timestamps):
+                    ts = str(timestamps[i])
+
+                log_epoch_detected(
+                    epoch_index=epoch_index,
+                    bar_index=i,
+                    excess_gain=float(excess_gains[i]),
+                    excess_loss=float(excess_losses[i]),
+                    endorsing_crest=float(endorsing_crest),
+                    candidate_nadir=float(candidate_nadir),
+                    tmaeg_threshold=hurdle,
+                    position_type="bull",
+                    timestamp=ts,
+                    nav_at_epoch=float(nav[i]),
+                )
+                # Update tracked state after epoch
+                endorsing_crest = nav[i]
+                candidate_nadir = nav[i]
+            else:
+                # Track candidate nadir for context
+                if nav[i] < candidate_nadir:
+                    candidate_nadir = nav[i]
+
     return BullExcessGainLossResult(
         excess_gains=excess_gains,
         excess_losses=excess_losses,

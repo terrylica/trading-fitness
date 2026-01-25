@@ -4,6 +4,7 @@ This module provides a standardized NDJSON logging infrastructure with:
 - UTC timestamps (ISO 8601)
 - Stable core schema for machine parsing
 - Correlation IDs for tracing across components
+- Provenance tracking for scientific reproducibility
 - Safe defaults for rotation/retention
 - Graceful degradation (logging never crashes the app)
 
@@ -17,6 +18,12 @@ Schema:
     "pid": 12345,                          # Process ID
     "tid": 67890,                          # Thread ID
     "trace_id": "abc123",                  # Correlation ID
+    "provenance": {                        # Reproducibility context
+        "session_id": "sess_20260125_120000",
+        "git_sha": "0dc100c",
+        "input_hash": null,                # Set per-event
+        "random_seed": null                # Set per-event
+    },
     "context": {...}                       # Structured context data
 }
 """
@@ -30,7 +37,6 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from loguru import logger
 
@@ -45,6 +51,59 @@ def get_trace_id() -> str:
 def set_trace_id(trace_id: str) -> None:
     """Set a specific trace ID (useful for cross-component correlation)."""
     get_trace_id._trace_id = trace_id
+
+
+def get_session_id() -> str:
+    """Get or create a session ID for provenance tracking."""
+    if not hasattr(get_session_id, "_session_id"):
+        get_session_id._session_id = f"sess_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    return get_session_id._session_id
+
+
+def get_git_sha() -> str:
+    """Get git SHA for provenance tracking (cached)."""
+    if not hasattr(get_git_sha, "_git_sha"):
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+            get_git_sha._git_sha = result.stdout.strip()[:8]
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            get_git_sha._git_sha = "unknown"
+    return get_git_sha._git_sha
+
+
+# Thread-local storage for per-event provenance context
+_provenance_context = threading.local()
+
+
+def set_provenance_context(
+    input_hash: str | None = None,
+    random_seed: int | None = None,
+) -> None:
+    """Set per-event provenance context (thread-local).
+
+    Args:
+        input_hash: SHA256 hash of input data for this event
+        random_seed: Random seed used for this computation
+    """
+    _provenance_context.input_hash = input_hash
+    _provenance_context.random_seed = random_seed
+
+
+def get_provenance() -> dict:
+    """Get current provenance context for logging."""
+    return {
+        "session_id": get_session_id(),
+        "git_sha": get_git_sha(),
+        "input_hash": getattr(_provenance_context, "input_hash", None),
+        "random_seed": getattr(_provenance_context, "random_seed", None),
+    }
 
 
 class NDJSONFormatter:
@@ -80,6 +139,7 @@ class NDJSONFormatter:
                 "pid": os.getpid(),
                 "tid": threading.get_ident(),
                 "trace_id": get_trace_id(),
+                "provenance": get_provenance(),
             }
 
             if context:
@@ -244,6 +304,48 @@ class ITHStepLogger:
             **{k: round(v, 10) if isinstance(v, float) else v for k, v in extra.items()},
         })
 
+    def log_epoch_event(
+        self,
+        epoch_index: int,
+        bar_index: int,
+        excess_gain: float,
+        excess_loss: float,
+        endorsing_crest: float,
+        candidate_nadir: float,
+        tmaeg: float,
+        timestamp: str | None = None,
+        nav_at_epoch: float | None = None,
+    ) -> None:
+        """Log epoch detection event for P&L attribution.
+
+        This method logs when an ITH epoch is detected, capturing all
+        necessary context for forensic analysis and P&L attribution.
+
+        Args:
+            epoch_index: Sequential epoch number
+            bar_index: Index in data array where epoch occurred
+            excess_gain: Excess gain value at epoch
+            excess_loss: Excess loss value at epoch
+            endorsing_crest: Endorsing crest value
+            candidate_nadir: Candidate nadir value
+            tmaeg: TMAEG threshold used
+            timestamp: Optional ISO timestamp
+            nav_at_epoch: Optional NAV value at epoch
+        """
+        self.steps.append({
+            "step": "epoch_detected",
+            "epoch_index": epoch_index,
+            "bar_index": bar_index,
+            "timestamp": timestamp,
+            "excess_gain": round(excess_gain, 10),
+            "excess_loss": round(excess_loss, 10),
+            "endorsing_crest": round(endorsing_crest, 10),
+            "candidate_nadir": round(candidate_nadir, 10),
+            "tmaeg_threshold": round(tmaeg, 10),
+            "position_type": self.component.split("_")[0],  # "bull" or "bear"
+            "nav_at_epoch": round(nav_at_epoch, 10) if nav_at_epoch is not None else None,
+        })
+
     def log_result(
         self,
         num_epochs: int,
@@ -255,7 +357,7 @@ class ITHStepLogger:
         result = {
             "step": "result",
             "num_epochs": num_epochs,
-            "intervals_cv": round(intervals_cv, 10) if not (intervals_cv != intervals_cv) else None,  # Handle NaN
+            "intervals_cv": round(intervals_cv, 10) if intervals_cv == intervals_cv else None,  # Handle NaN
             "impl": self.implementation,
             "nav_hash": self.nav_hash,
         }

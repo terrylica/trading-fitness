@@ -1,3 +1,4 @@
+# polars-exception: Legacy module with extensive Pandas integration (plotly, scipy stats)
 """
 ITH (Investment Time Horizon) Fitness Analysis Script
 
@@ -78,7 +79,6 @@ from ith_python.paths import (
 
 # Import canonical Bull ITH algorithm from bull_ith_numba module
 from ith_python.bull_ith_numba import (
-    BullExcessGainLossResult,
     bull_excess_gain_excess_loss,
     max_drawdown as _max_drawdown_numba,
 )
@@ -301,7 +301,13 @@ def create_progress_bar(console: Console) -> Progress:
 
 
 def load_and_validate_csv(csv_file: Path) -> pd.DataFrame:
-    """Load and validate CSV file with consistent error handling."""
+    """Load and validate CSV file with consistent error handling.
+
+    Emits data.load telemetry event for forensic analysis and reproducibility.
+    """
+    from ith_python.telemetry import log_data_load
+    from ith_python.telemetry.provenance import fingerprint_file
+
     try:
         nav_data = pd.read_csv(csv_file, index_col="Date", parse_dates=True)
 
@@ -314,6 +320,18 @@ def load_and_validate_csv(csv_file: Path) -> pd.DataFrame:
         if "PnL" not in nav_data.columns:
             logger.info(f"Calculating PnL for {csv_file}")
             nav_data = pnl_from_nav(nav_data).nav_data
+
+        # Emit data.load telemetry event
+        file_fp = fingerprint_file(csv_file)
+        nav_range = (float(nav_data["NAV"].min()), float(nav_data["NAV"].max()))
+        log_data_load(
+            source_path=str(csv_file),
+            sha256_hash=file_fp["sha256"],
+            row_count=len(nav_data),
+            column_count=len(nav_data.columns),
+            columns=list(nav_data.columns),
+            value_range=nav_range,
+        )
 
         return nav_data
 
@@ -1154,6 +1172,12 @@ def process_nav_data(
     bypass_thresholds=False,
     data_source="Synthetic",
 ) -> ProcessNavDataResult:
+    """Process NAV data through ITH algorithm.
+
+    Emits algorithm.init telemetry event for reproducibility.
+    """
+    from ith_python.telemetry import log_algorithm_init
+    from ith_python.telemetry.provenance import fingerprint_array
 
     # Extract the first six non-zero digits from the first two rows of the NAV column
     uid_part1 = get_first_non_zero_digits(nav_data["NAV"].iloc[0], 6)
@@ -1161,6 +1185,20 @@ def process_nav_data(
     # Concatenate the two parts to form the UID
     uid = uid_part1 + uid_part2
     logger.debug(f"{uid=}")
+
+    # Emit algorithm.init telemetry event
+    nav_fp = fingerprint_array(nav_data["NAV"].values, "nav_input")
+    log_algorithm_init(
+        algorithm_name="bull_ith",
+        version="1.0.0",
+        config={
+            "tmaeg": TMAEG,
+            "bypass_thresholds": bypass_thresholds,
+            "data_source": data_source,
+            "nav_length": len(nav_data),
+        },
+        input_hash=nav_fp["sha256"],
+    )
 
     # Initialize filename with a default value
     filename = None
