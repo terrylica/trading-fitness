@@ -1139,3 +1139,363 @@ depends = ["analysis:all"]
 [tasks."upgrade:views"]
 description = "Regenerate views only (after view code changes)"
 depends = ["views:all"]
+
+# =============================================================================
+# Data Preparation Layer (Layer 0) - DAG-Based Orchestration
+# Preflight checks and data acquisition before feature computation
+# Architecture: docs/plans/2026-01-25-multi-view-feature-architecture-plan.md
+# =============================================================================
+
+# ============ Preflight: Configuration ============
+[tasks."preflight:data-config"]
+description = "Load and validate forensic configuration from config/forensic.toml"
+run = """
+cd packages/ith-python
+uv sync
+
+echo "🔧 Loading forensic configuration..."
+uv run python -m ith_python.config.forensic --validate
+
+# Export key values for downstream tasks
+uv run python -c "
+from ith_python.config import load_forensic_config
+config = load_forensic_config()
+print(f'FORENSIC_SYMBOLS={",".join(config.symbols)}')
+print(f'FORENSIC_THRESHOLDS={",".join(map(str, config.thresholds))}')
+print(f'FORENSIC_LOOKBACKS={",".join(map(str, config.lookbacks))}')
+print(f'FORENSIC_MIN_VALID_BARS={config.preflight.min_valid_bars}')
+print(f'FORENSIC_WARMUP_BARS={config.warmup_bars}')
+print(f'FORENSIC_AUTO_FETCH={str(config.preflight.auto_fetch).lower()}')
+print(f'FORENSIC_VALIDATION_PRESET={config.validation.preset}')
+"
+"""
+
+# ============ Preflight: ClickHouse ============
+[tasks."preflight:clickhouse"]
+description = "Ensure ClickHouse is running and accessible"
+run = """
+# Load config to check auto_start setting
+cd packages/ith-python
+AUTO_START=$(uv run python -c "
+from ith_python.config import load_forensic_config
+config = load_forensic_config()
+print('true' if config.clickhouse.auto_start else 'false')
+" 2>/dev/null || echo "true")
+
+if pgrep -f "clickhouse server" > /dev/null; then
+    echo "✅ ClickHouse already running"
+    exit 0
+fi
+
+if [ "$AUTO_START" = "false" ]; then
+    echo "❌ ClickHouse not running and auto_start=false"
+    echo "   Start manually or set clickhouse.auto_start=true in config/forensic.toml"
+    exit 1
+fi
+
+echo "🚀 Starting ClickHouse server..."
+CLICKHOUSE_BIN=$(ls ~/.local/share/mise/installs/clickhouse/*/bin/clickhouse 2>/dev/null | head -1)
+if [ -z "$CLICKHOUSE_BIN" ]; then
+    echo "❌ ClickHouse not installed. Run: mise install clickhouse"
+    exit 1
+fi
+
+CONFIG_FILE="$HOME/.clickhouse-local/config.xml"
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "❌ ClickHouse config not found at $CONFIG_FILE"
+    exit 1
+fi
+
+cd ~/.clickhouse-local
+nohup "$CLICKHOUSE_BIN" server --config-file="$CONFIG_FILE" > server.log 2>&1 &
+
+echo "   Waiting for ClickHouse to start..."
+for i in {1..30}; do
+    if "$CLICKHOUSE_BIN" client --query "SELECT 1" > /dev/null 2>&1; then
+        echo "✅ ClickHouse started successfully"
+        exit 0
+    fi
+    sleep 1
+done
+
+echo "❌ ClickHouse failed to start. Check ~/.clickhouse-local/server.log"
+exit 1
+"""
+
+# ============ Preflight: Range Bar Cache ============
+[tasks."preflight:rangebar-cache"]
+description = "Check range bar data availability in ClickHouse cache"
+depends = ["preflight:data-config", "preflight:clickhouse"]
+run = """
+cd packages/ith-python
+uv sync --extra validation
+
+echo "🔍 Checking range bar cache status..."
+uv run python << 'PYTHON_EOF'
+import sys
+from ith_python.config import load_forensic_config
+
+try:
+    from rangebar import RangeBarCache
+except ImportError:
+    print("❌ rangebar package not installed")
+    sys.exit(1)
+
+config = load_forensic_config()
+cache = RangeBarCache()
+
+print(f"Checking {config.total_combinations} symbol x threshold combinations...")
+print()
+
+missing = []
+available = []
+
+for symbol in config.symbols:
+    for threshold in config.thresholds:
+        count = cache.count_bars(symbol, threshold)
+        oldest = cache.get_oldest_bar_timestamp(symbol, threshold)
+        newest = cache.get_newest_bar_timestamp(symbol, threshold)
+
+        if count == 0:
+            missing.append((symbol, threshold))
+            print(f"  ❌ {symbol} @ {threshold}dbps: NO DATA")
+        else:
+            from datetime import datetime
+            oldest_dt = datetime.fromtimestamp(oldest / 1000) if oldest else None
+            newest_dt = datetime.fromtimestamp(newest / 1000) if newest else None
+            available.append((symbol, threshold, count, oldest_dt, newest_dt))
+            print(f"  ✅ {symbol} @ {threshold}dbps: {count:,} bars ({oldest_dt:%Y-%m-%d} to {newest_dt:%Y-%m-%d})")
+
+print()
+print(f"Available: {len(available)} / {config.total_combinations}")
+print(f"Missing: {len(missing)} / {config.total_combinations}")
+
+if missing and config.preflight.auto_fetch:
+    print()
+    print("⚠️  Missing data will be fetched by data:precompute task")
+    # Write missing combinations for downstream task
+    with open("../../.missing_data.txt", "w") as f:
+        for symbol, threshold in missing:
+            f.write(f"{symbol},{threshold}\n")
+elif missing:
+    print()
+    print("❌ Missing data and auto_fetch=false")
+    print("   Run: mise run data:precompute")
+    sys.exit(1)
+else:
+    print()
+    print("✅ All required data available in cache")
+PYTHON_EOF
+"""
+
+# ============ Data: Precompute Range Bars ============
+[tasks."data:precompute"]
+description = "Fetch and precompute missing range bar data from Binance"
+depends = ["preflight:clickhouse"]
+run = """
+cd packages/ith-python
+uv sync --extra validation
+
+echo "📥 Precomputing range bar data..."
+uv run python << 'PYTHON_EOF'
+import sys
+from pathlib import Path
+from datetime import datetime, timedelta
+from ith_python.config import load_forensic_config
+
+try:
+    from rangebar import precompute_range_bars, PrecomputeProgress, RangeBarCache
+except ImportError:
+    print("❌ rangebar package not installed")
+    sys.exit(1)
+
+config = load_forensic_config()
+
+# Check for missing data file from preflight
+missing_file = Path("../../.missing_data.txt")
+if missing_file.exists():
+    missing = []
+    with open(missing_file) as f:
+        for line in f:
+            parts = line.strip().split(",")
+            if len(parts) == 2:
+                missing.append((parts[0], int(parts[1])))
+    missing_file.unlink()  # Clean up
+else:
+    # Compute all combinations if no missing file
+    missing = config.symbol_threshold_matrix
+
+if not missing:
+    print("✅ No missing data to precompute")
+    sys.exit(0)
+
+print(f"Precomputing {len(missing)} symbol x threshold combinations...")
+print()
+
+# Date range based on config
+if config.date_range.strategy == "all_available":
+    # Use max lookback to determine how far back to go
+    end_date = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")  # Binance has 1-2 day lag
+    start_date = (datetime.now() - timedelta(days=config.preflight.max_lookback_days)).strftime("%Y-%m-%d")
+elif config.date_range.strategy == "rolling_days":
+    end_date = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=config.date_range.rolling_days + 2)).strftime("%Y-%m-%d")
+elif config.date_range.strategy == "fixed":
+    start_date = config.date_range.start_date
+    end_date = config.date_range.end_date
+else:
+    print(f"❌ Unsupported date strategy: {config.date_range.strategy}")
+    sys.exit(1)
+
+print(f"Date range: {start_date} to {end_date}")
+print()
+
+def progress_callback(p: PrecomputeProgress):
+    pct = (p.months_completed / p.months_total * 100) if p.months_total > 0 else 0
+    print(f"  [{p.phase}] {p.current_month}: {pct:.0f}% ({p.bars_generated:,} bars)")
+
+success = 0
+failed = 0
+
+for symbol, threshold in missing:
+    print(f"📊 {symbol} @ {threshold}dbps...")
+    try:
+        result = precompute_range_bars(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            threshold_decimal_bps=threshold,
+            source=config.source,
+            market=config.market,
+            progress_callback=progress_callback if config.telemetry.emit_progress else None,
+            validate_on_complete=config.validation.on_failure,
+            continuity_tolerance_pct=config.validation.effective_tolerance,
+        )
+        print(f"  ✅ {result.total_bars:,} bars in {result.elapsed_seconds:.1f}s")
+        success += 1
+    except Exception as e:
+        print(f"  ❌ Failed: {e}")
+        failed += 1
+
+print()
+print(f"Completed: {success} success, {failed} failed")
+
+if failed > 0:
+    sys.exit(1)
+PYTHON_EOF
+"""
+
+# ============ Data: Validate Continuity ============
+[tasks."data:validate"]
+description = "Validate range bar continuity using tiered validation"
+depends = ["preflight:clickhouse"]
+run = """
+cd packages/ith-python
+uv sync --extra validation
+
+echo "🔬 Validating range bar continuity..."
+uv run python << 'PYTHON_EOF'
+import sys
+from ith_python.config import load_forensic_config
+
+try:
+    from rangebar import RangeBarCache, validate_continuity_tiered
+except ImportError:
+    print("❌ rangebar package not installed")
+    sys.exit(1)
+
+config = load_forensic_config()
+cache = RangeBarCache()
+
+print(f"Validation preset: {config.validation.preset} ({config.validation.effective_tolerance:.2%} tolerance)")
+print()
+
+all_valid = True
+results = []
+
+for symbol in config.symbols:
+    for threshold in config.thresholds:
+        # Get bars from cache
+        df, count = cache.get_n_bars(
+            symbol=symbol,
+            threshold_decimal_bps=threshold,
+            n_bars=10000,  # Get enough for validation
+        )
+
+        if df is None or len(df) < 100:
+            print(f"  ⚠️  {symbol} @ {threshold}dbps: Insufficient data ({count} bars)")
+            continue
+
+        # Run tiered validation
+        result = validate_continuity_tiered(
+            df=df,
+            symbol=symbol,
+            threshold_decimal_bps=threshold,
+            validation=config.validation.preset,
+        )
+
+        results.append((symbol, threshold, result))
+
+        if result.is_valid:
+            print(f"  ✅ {symbol} @ {threshold}dbps: {len(df):,} bars, valid")
+        else:
+            all_valid = False
+            gaps = result.summary_dict()
+            print(f"  ❌ {symbol} @ {threshold}dbps: {len(df):,} bars, GAPS: {gaps}")
+
+print()
+print("=" * 60)
+print("VALIDATION SUMMARY")
+print("=" * 60)
+
+# Aggregate by tier
+from collections import Counter
+tier_counts = Counter()
+for _, _, r in results:
+    for tier, summary in r.gaps_by_tier.items():
+        tier_counts[tier.name] += summary.count
+
+print("\nGaps by tier:")
+for tier, count in sorted(tier_counts.items()):
+    print(f"  {tier}: {count}")
+
+if all_valid:
+    print("\n✅ All data passes continuity validation")
+else:
+    if config.validation.on_failure == "error":
+        print("\n❌ Validation failed (on_failure=error)")
+        sys.exit(1)
+    else:
+        print(f"\n⚠️  Validation issues detected (on_failure={config.validation.on_failure})")
+PYTHON_EOF
+"""
+
+# ============ Full Pipeline with Data Layer ============
+[tasks."forensic:full-pipeline"]
+description = "Complete pipeline: config → data → compute → analyze (DAG orchestration)"
+depends = [
+    "preflight:data-config",
+    "preflight:clickhouse",
+    "preflight:rangebar-cache",
+    "data:precompute",
+    "data:validate",
+    "preflight:warmup",
+    "features:compute",
+    "views:all",
+    "analysis:all"
+]
+run = """
+echo ""
+echo "✅ Full Forensic Pipeline Complete (DAG-based orchestration)"
+echo ""
+echo "📦 Artifacts:"
+echo "   Config: config/forensic.toml"
+echo "   SSoT: artifacts/ssot/features_long.parquet"
+echo "   Wide Views: artifacts/views/wide/"
+echo "   Nested Views: artifacts/views/nested/"
+echo "   Analysis: artifacts/analysis/"
+echo ""
+echo "📊 Telemetry: logs/ndjson/"
+echo ""
+echo "🔍 Run 'mise run forensic:hypothesis-audit' to review results"
+"""

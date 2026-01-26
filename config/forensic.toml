@@ -1,0 +1,84 @@
+# Forensic Analysis Configuration
+# SSoT for data preparation and analysis pipeline
+# Used by: preflight:data-config, data:precompute, forensic:pipeline
+
+[data]
+# Symbols to analyze (Top 5 by volume)
+# Full list available: rangebar.TIER1_SYMBOLS (18 symbols)
+symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+
+# Range bar thresholds in decimal basis points (dbps)
+# Maps to rangebar.THRESHOLD_PRESETS: micro=10, tight=50, standard=100, medium=250, wide=500, macro=1000
+thresholds = [10, 50, 100, 250, 500, 1000]
+
+# ITH lookback windows (bars)
+lookbacks = [20, 50, 100, 200, 500]
+
+# Data source configuration
+source = "binance"
+market = "spot"
+
+[data.date_range]
+# Strategy: "all_available" | "rolling_days" | "fixed" | "n_bars"
+strategy = "all_available"
+
+# For rolling_days strategy
+rolling_days = 90
+
+# For fixed strategy (ISO format)
+# start_date = "2025-01-01"
+# end_date = "2026-01-20"
+
+# For n_bars strategy
+# n_bars = 10000
+
+[validation]
+# Continuity validation preset
+# Options: permissive (5%), research (2%), standard (1%), strict (0.5%), paranoid (0.1%)
+preset = "research"
+
+# Tolerance percentage (overrides preset if set)
+# tolerance_pct = 0.02
+
+# Action on validation failure: "error" | "warn" | "skip"
+on_failure = "warn"
+
+[clickhouse]
+# Auto-start ClickHouse if not running
+auto_start = true
+
+# Connection timeout in seconds
+timeout = 30
+
+# Max retries for connection
+max_retries = 3
+
+[preflight]
+# Minimum valid bars required after warmup
+min_valid_bars = 500
+
+# Whether to auto-fetch missing data
+auto_fetch = true
+
+# Maximum days to look back when fetching
+max_lookback_days = 365
+
+[output]
+# Artifact directories (relative to project root)
+ssot_dir = "artifacts/ssot"
+views_dir = "artifacts/views"
+analysis_dir = "artifacts/analysis"
+logs_dir = "logs/ndjson"
+
+# Include microstructure data (tick counts, volume profile)
+include_microstructure = false
+
+[telemetry]
+# Enable NDJSON telemetry logging
+enabled = true
+
+# Emit progress events during precompute
+emit_progress = true
+
+# Emit data provenance events
+emit_provenance = true

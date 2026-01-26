@@ -4,12 +4,14 @@
 
 ## Quick Reference
 
-| Action            | Command                      |
-| ----------------- | ---------------------------- |
-| Full E2E pipeline | `mise run forensic:pipeline` |
-| Run ITH analysis  | `mise run analyze`           |
-| Run tests         | `mise run test`              |
-| Preflight checks  | `mise run preflight:warmup`  |
+| Action                | Command                             |
+| --------------------- | ----------------------------------- |
+| Full pipeline (new)   | `mise run forensic:full-pipeline`   |
+| Legacy E2E pipeline   | `mise run forensic:pipeline`        |
+| Data preflight        | `mise run preflight:rangebar-cache` |
+| Precompute range bars | `mise run data:precompute`          |
+| Validate data         | `mise run data:validate`            |
+| Run tests             | `mise run test`                     |
 
 ## Package Map
 
@@ -25,6 +27,7 @@
 
 | Topic               | Location                                                                                                                       | Purpose                                  |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| Forensic Config     | [config/forensic.toml](config/forensic.toml)                                                                                   | Data pipeline configuration (SSoT)       |
 | ITH Methodology     | [docs/ITH.md](docs/ITH.md)                                                                                                     | Core algorithm and fitness criteria      |
 | Feature Registry    | [docs/features/REGISTRY.md](docs/features/REGISTRY.md)                                                                         | All extractable features (SSoT)          |
 | Logging Contract    | [docs/LOGGING.md](docs/LOGGING.md)                                                                                             | NDJSON telemetry format                  |
