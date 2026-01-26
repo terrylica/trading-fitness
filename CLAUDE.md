@@ -150,13 +150,60 @@ mise run forensic:hypothesis-audit # Audit hypothesis test results
 
 ---
 
-## Configuration
+## mise: DAG-Based Task Orchestration
 
-| File           | Purpose                                         |
-| -------------- | ----------------------------------------------- |
-| `mise.toml`    | Runtime versions, tasks, `UV_PYTHON=python3.13` |
-| `.mcp.json`    | MCP servers (mise, code-search, ast-grep)       |
-| `sgconfig.yml` | ast-grep rules configuration                    |
+Uses [jdx/mise](https://mise.jdx.dev/) with **DAG-based task orchestration** (Directed Acyclic Graph).
+
+### Orchestration Model
+
+- **Task Graph**: Tasks are nodes, `depends` defines directed edges
+- **Topological Execution**: Tasks execute in dependency order via topological sort
+- **Parallel by Default**: Independent tasks (no dependency path) run concurrently
+
+### Configuration Hierarchy
+
+| Level   | File                   | Purpose                                 |
+| ------- | ---------------------- | --------------------------------------- |
+| Root    | `mise.toml`            | `[tools]` + `[env]` + orchestration     |
+| Package | `packages/*/mise.toml` | Domain-specific execution tasks         |
+| Local   | `.mise.local.toml`     | Secrets, overrides (gitignored)         |
+| Profile | `mise.{env}.toml`      | Environment-specific (dev/staging/prod) |
+
+### DAG Execution Features
+
+- **Incremental**: Define `sources`/`outputs` to skip unchanged tasks (like Make)
+- **Parallel**: Tasks in `depends` array with no mutual dependencies run concurrently
+- **Caching**: Output-based caching skips re-execution (similar to Turborepo/Nx)
+- **Watch Mode**: `mise watch <task>` with `sources` for live reload
+
+### Task Dependency Patterns
+
+```toml
+# Sequential: A → B → C
+[tasks."features:compute"]
+depends = ["preflight:warmup", "develop:metrics-rust"]  # Antecedents
+
+# Fan-in: (A, B, C) → D
+[tasks."views:all"]
+depends = ["views:wide", "views:nested"]
+
+# Fan-out: A → (B, C, D)
+# B, C, D all have depends = ["A"]
+```
+
+| Pattern    | Description    | Example                    |
+| ---------- | -------------- | -------------------------- |
+| Sequential | A → B → C      | Preflight → Compute → View |
+| Fan-out    | A → (B, C, D)  | Compute → (Wide, Nested)   |
+| Fan-in     | (A, B, C) → D  | (Dist, Dim) → Analysis:all |
+| Diamond    | A → (B, C) → D | Classic DAG convergence    |
+
+### Other Configuration
+
+| File           | Purpose                                   |
+| -------------- | ----------------------------------------- |
+| `.mcp.json`    | MCP servers (mise, code-search, ast-grep) |
+| `sgconfig.yml` | ast-grep rules configuration              |
 
 ---
 
