@@ -2,87 +2,114 @@
 
 > Quick context for continuing work on trading-fitness.
 
-## Last Session: 2026-01-25
+## Last Session: 2026-01-26
 
 ### Completed Work
 
-**Feature Registry & ClaSPy Documentation**
+**Multi-View Feature Architecture Implementation**
 
-Created comprehensive feature tracking infrastructure:
+Implemented 3-layer separation of concerns for feature pipeline:
 
-| Component                   | Status | Description                             |
-| --------------------------- | ------ | --------------------------------------- |
-| `docs/features/REGISTRY.md` | DONE   | SSoT for all extractable features       |
-| `docs/features/CLASPY.md`   | DONE   | ClaSPy integration guide (12+ features) |
-| `~/fork-tools/claspy/`      | DONE   | Forked for local exploration            |
-| Root CLAUDE.md              | DONE   | Updated with Feature Registry link      |
+| Layer | Module      | Purpose                              | Status |
+| ----- | ----------- | ------------------------------------ | ------ |
+| 1     | `features/` | ITH feature computation (wraps Rust) | DONE   |
+| 2     | `storage/`  | Long Format SSoT + view generators   | DONE   |
+| 3     | `analysis/` | Statistical evaluation orchestrator  | DONE   |
 
-**Observability Telemetry Enhancement (Phases 1-2)**
+**Key Components Created:**
 
-Implemented scientific reproducibility and trading domain telemetry:
+| Component                            | Description                                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `FeatureStore`                       | Central storage with view generators (`to_wide`, `to_nested`, `to_dense`, `to_clickhouse`) |
+| `FeatureConfig`                      | Configuration dataclass for ITH computation                                                |
+| `AnalysisConfig` / `AnalysisResults` | Unified analysis interface                                                                 |
+| `validate_warmup()`                  | Preflight check for data sufficiency                                                       |
+| `preflight:warmup`                   | Mise task for warmup validation                                                            |
 
-| Component           | Status | Description                       |
-| ------------------- | ------ | --------------------------------- |
-| `telemetry/` module | DONE   | Provenance tracking, event types  |
-| `ndjson_logger.py`  | DONE   | Extended with provenance fields   |
-| `ith.py`            | DONE   | data.load + algorithm.init events |
-| `bull_ith_numba.py` | DONE   | Optional epoch_detected telemetry |
-| `bear_ith_numba.py` | DONE   | Optional epoch_detected telemetry |
+**Warmup Handling Fixed:**
 
-### Remaining Work (from approved plan)
+- `to_wide(drop_warmup=True)` now correctly drops NaN values (not just null)
+- Preflight validation ensures sufficient data after warmup
+- 499 warmup bars for lb500, leaving 1501 valid rows from 2000 input
 
-| Phase   | Description                       | Status  |
-| ------- | --------------------------------- | ------- |
-| Phase 3 | Statistical Examination Telemetry | PENDING |
-| Phase 4 | py-spy Profiling Infrastructure   | PENDING |
-| Phase 5 | Documentation Update (LOGGING.md) | PENDING |
+### Mise Tasks Added
 
-### Next Steps: ClaSPy Integration
+```bash
+mise run preflight:warmup     # Validate warmup requirements
+mise run features:compute     # Layer 1 (depends on preflight)
+mise run views:all            # Layer 2 view generation
+mise run analysis:all         # Layer 3 statistical analysis
+mise run forensic:pipeline    # Full E2E pipeline
+mise run upgrade:features     # Independent feature upgrade
+mise run upgrade:views        # Independent view upgrade
+mise run upgrade:analysis     # Independent analysis upgrade
+```
 
-1. Add `claspy` to ith-python dependencies
-2. Create feature extractor module (`claspy_features.py`)
-3. Run statistical examination with ClaSPy features
-4. Mark redundant features as Legacy in REGISTRY.md
-5. Continue with Phase 3 hypothesis tracking
-
-### Key Files Modified
+### Key Files Created/Modified
 
 ```
-docs/features/
-├── REGISTRY.md          # NEW - Feature registry (SSoT)
-└── CLASPY.md            # NEW - ClaSPy integration guide
-
 packages/ith-python/src/ith_python/
-├── telemetry/           # NEW - telemetry module
+├── features/                # NEW - Layer 1
 │   ├── __init__.py
-│   ├── provenance.py    # ProvenanceContext, fingerprint_array
-│   └── events.py        # Event types and log functions
-├── ndjson_logger.py     # Extended with provenance
-├── ith.py               # Added data.load, algorithm.init
-├── bull_ith_numba.py    # Added emit_telemetry parameter
-└── bear_ith_numba.py    # Added emit_telemetry parameter
+│   ├── config.py            # FeatureConfig dataclass
+│   └── compute.py           # Wraps Rust compute_multiscale_ith
+│
+├── storage/                 # NEW - Layer 2
+│   ├── __init__.py
+│   ├── schemas.py           # Long format schema, validation
+│   ├── store.py             # FeatureStore class
+│   └── views.py             # View generators + warmup validation
+│
+├── analysis/                # NEW - Layer 3
+│   ├── __init__.py          # Re-exports from statistical_examination
+│   └── runner.py            # Unified analysis interface
+
+docs/plans/
+└── 2026-01-25-multi-view-feature-architecture-plan.md  # Architecture plan
+
+mise.toml                    # Added preflight + layer tasks
 ```
+
+### E2E Test Results (2000 bars BTCUSDT)
+
+| Metric               | Value                |
+| -------------------- | -------------------- |
+| Input bars           | 2000                 |
+| Warmup bars          | 499                  |
+| Valid bars           | 1501                 |
+| Features             | 40 (8 × 5 lookbacks) |
+| Normality rate       | 0%                   |
+| PCA components (95%) | 26 of 40             |
+| Stationarity rate    | 79%                  |
 
 ### Plan Reference
 
-Full implementation plan: [docs/plans/2026-01-25-observability-telemetry-plan.md](docs/plans/2026-01-25-observability-telemetry-plan.md)
+- **Architecture Plan**: [docs/plans/2026-01-25-multi-view-feature-architecture-plan.md](docs/plans/2026-01-25-multi-view-feature-architecture-plan.md)
+- **Observability Plan**: [docs/plans/2026-01-25-observability-telemetry-plan.md](docs/plans/2026-01-25-observability-telemetry-plan.md)
 
 ### To Continue
 
 ```bash
-# Run tests to verify state
-cd packages/ith-python
-UV_PYTHON=python3.13 uv run pytest tests/ -v --timeout=60 --ignore=tests/test_statistical_examination/
+# Run full pipeline
+mise run forensic:pipeline
 
-# Add ClaSPy and create feature extractor
-# Then continue with Phase 3: hypothesis tracking
+# Or run individual layers
+mise run preflight:warmup
+mise run features:compute
+mise run analysis:all
 ```
 
 ---
 
 ## Previous Sessions
 
-### 2026-01-25 (earlier): Observability Telemetry Phases 1-2
+### 2026-01-25: Feature Registry & ClaSPy Documentation
+
+- Created `docs/features/REGISTRY.md` - SSoT for all extractable features
+- Created `docs/features/CLASPY.md` - ClaSPy integration guide
+- Forked ClaSPy to `~/fork-tools/claspy/`
+
+### 2026-01-25: Observability Telemetry Phases 1-2
 
 - Created telemetry module with provenance tracking
 - Extended ndjson_logger with scientific reproducibility fields
@@ -102,4 +129,3 @@ UV_PYTHON=python3.13 uv run pytest tests/ -v --timeout=60 --ignore=tests/test_st
 - Created cross_scale, threshold_stability, distribution, regime modules
 - Created dimensionality, selection, temporal modules
 - Added runner.py CLI orchestration
-- Generated examination artifacts from suresh.csv

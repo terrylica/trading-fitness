@@ -26,6 +26,7 @@ import numpy as np
 import polars as pl
 
 from ith_python.statistical_examination._utils import get_feature_columns
+from ith_python.telemetry.events import log_hypothesis_result
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -128,6 +129,22 @@ def compute_stationarity(
         try:
             adf_stat = _compute_adf_statistic(x)
             is_stationary = adf_stat < critical_value_5pct
+
+            # Emit hypothesis telemetry for ADF stationarity test
+            log_hypothesis_result(
+                hypothesis_id=f"adf_stationarity_{col}",
+                test_name="augmented_dickey_fuller",
+                statistic=float(adf_stat),
+                p_value=None,  # Using critical value comparison instead
+                decision="stationary" if is_stationary else "non_stationary",
+                effect_size=float(adf_stat - critical_value_5pct),  # Distance from critical value
+                context={
+                    "feature": col,
+                    "n_samples": len(x),
+                    "critical_value_5pct": critical_value_5pct,
+                    "note": "For bounded [0,1] data, interpret as LOCAL PERSISTENCE test",
+                },
+            )
 
             results.append({
                 "feature": col,
@@ -262,6 +279,26 @@ def analyze_temporal_structure(
         median_half_life = None
         recommended_seq_len = 50  # Default
 
+    # Emit hypothesis telemetry for temporal structure summary
+    stationarity_rate = n_stationary / len(valid_stationarity) if len(valid_stationarity) > 0 else None
+    log_hypothesis_result(
+        hypothesis_id=f"temporal_structure_{len(feature_cols)}feat",
+        test_name="temporal_structure_analysis",
+        statistic=median_half_life if median_half_life is not None else 0.0,
+        p_value=None,
+        decision="mostly_stationary" if stationarity_rate and stationarity_rate > 0.8 else "mixed_stationarity",
+        effect_size=stationarity_rate,
+        context={
+            "n_features": len(feature_cols),
+            "n_stationary": n_stationary,
+            "n_nonstationary": n_nonstationary,
+            "stationarity_rate": stationarity_rate,
+            "persistence_distribution": persistence_classes,
+            "median_half_life": median_half_life,
+            "recommended_lstm_seq_len": recommended_seq_len,
+        },
+    )
+
     return {
         "acf_results": acf_df.to_dicts(),
         "stationarity_results": stationarity_df.to_dicts(),
@@ -270,7 +307,7 @@ def analyze_temporal_structure(
             "n_features": len(feature_cols),
             "n_stationary": n_stationary,
             "n_nonstationary": n_nonstationary,
-            "stationarity_rate": n_stationary / len(valid_stationarity) if len(valid_stationarity) > 0 else None,
+            "stationarity_rate": stationarity_rate,
             "persistence_distribution": persistence_classes,
             "median_half_life": median_half_life,
             "recommended_lstm_sequence_length": recommended_seq_len,

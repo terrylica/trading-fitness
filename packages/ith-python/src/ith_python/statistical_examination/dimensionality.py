@@ -24,6 +24,7 @@ import numpy as np
 import polars as pl
 
 from ith_python.statistical_examination._utils import get_feature_columns
+from ith_python.telemetry.events import log_hypothesis_result
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -133,6 +134,29 @@ def compute_vif_regularized(
     except np.linalg.LinAlgError:
         # Matrix still singular despite regularization
         vif_values = [np.inf] * n_features
+
+    # Count high VIF features for telemetry
+    n_high_vif = sum(1 for v in vif_values if v > max_vif_threshold)
+
+    # Emit hypothesis telemetry for Ridge VIF analysis
+    log_hypothesis_result(
+        hypothesis_id=f"ridge_vif_{n_features}feat",
+        test_name="ridge_vif",
+        statistic=float(np.median(vif_values)) if vif_values else 0.0,
+        p_value=None,  # VIF doesn't produce p-values
+        decision="high_multicollinearity" if n_high_vif > n_features * 0.1 else "acceptable_multicollinearity",
+        effect_size=n_high_vif / n_features if n_features > 0 else 0.0,
+        context={
+            "n_features": n_features,
+            "n_high_vif": n_high_vif,
+            "high_vif_rate": n_high_vif / n_features if n_features > 0 else 0.0,
+            "ridge_lambda": float(lam),
+            "target_condition": target_cond,
+            "max_vif": float(max(vif_values)) if vif_values else 0.0,
+            "median_vif": float(np.median(vif_values)) if vif_values else 0.0,
+            "condition_before": float(lambda_max / lambda_min) if lambda_min > 0 else float("inf"),
+        },
+    )
 
     return pl.DataFrame({
         "feature": list(feature_cols),
@@ -347,6 +371,25 @@ def perform_pca(
             "variance_explained": float(pca.explained_variance_ratio_[i]),
             "top_features": contributors,
         })
+
+    # Emit hypothesis telemetry for PCA dimensionality analysis
+    log_hypothesis_result(
+        hypothesis_id=f"pca_dimensionality_{len(feature_cols)}feat",
+        test_name="pca_dimensionality",
+        statistic=d_pr,  # Participation ratio as primary metric
+        p_value=None,  # PCA doesn't produce p-values
+        decision="high_redundancy" if n_95 / len(feature_cols) < 0.2 else "low_redundancy",
+        effect_size=n_95 / len(feature_cols),  # Dimensionality ratio as effect size
+        context={
+            "n_samples": len(X),
+            "n_features": len(feature_cols),
+            "n_components_90": n_90,
+            "n_components_95": n_95,
+            "n_components_99": n_99,
+            "participation_ratio": d_pr,
+            "dimensionality_ratio": n_95 / len(feature_cols),
+        },
+    )
 
     return {
         "n_samples": len(X),

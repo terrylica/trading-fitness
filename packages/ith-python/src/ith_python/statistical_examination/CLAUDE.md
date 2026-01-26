@@ -4,6 +4,14 @@
 
 **[Back to ith-python](../../../CLAUDE.md)**
 
+> **Note**: This module is now wrapped by `ith_python.analysis` (Layer 3). For new code, use:
+>
+> ```python
+> from ith_python.analysis import AnalysisConfig, analyze_features
+> ```
+>
+> This module remains the SSoT for statistical methods and is re-exported by `analysis/`.
+
 ## Quick Start
 
 ```bash
@@ -407,6 +415,61 @@ examination = [
     "pandera",       # Validation
 ]
 ```
+
+---
+
+## Telemetry Events (NDJSON)
+
+The E2E forensic pipeline emits structured telemetry events to `logs/ndjson/`:
+
+### Event Types
+
+| Event Type          | Count (typical) | Purpose                            |
+| ------------------- | --------------- | ---------------------------------- |
+| `hypothesis_result` | ~280            | Statistical test outcomes          |
+| `data.load`         | 2               | Per symbol data loading            |
+| `algorithm.init`    | 8               | Per threshold × symbol computation |
+
+### Hypothesis Test Events
+
+| Test Name            | Typical Count | Decision Values                     |
+| -------------------- | ------------- | ----------------------------------- |
+| `shapiro_wilk`       | 208           | `non_normal`, `normal`              |
+| `mann_whitney_u`     | 50            | `regime_invariant`, `regime_diff`   |
+| `ridge_vif`          | 9             | `acceptable_multicollinearity`      |
+| `pca_dimensionality` | 7             | `low_redundancy`, `high_redundancy` |
+| `temporal_structure` | 5             | `mixed_stationarity`                |
+
+### Event Schema
+
+```json
+{
+  "ts": "2026-01-26T01:08:28.687765+00:00",
+  "level": "INFO",
+  "event_type": "hypothesis_result",
+  "trace_id": "ad8a725cc026464c",
+  "test_name": "shapiro_wilk",
+  "statistic": 0.847,
+  "p_value": 0.001,
+  "decision": "non_normal",
+  "feature": "ith_rb25_lb100_bull_ed",
+  "alpha": 0.05
+}
+```
+
+### Querying Telemetry
+
+```bash
+# Count hypothesis results by test
+jq -s 'group_by(.test_name) | map({test: .[0].test_name, count: length})' \
+  logs/ndjson/statistical_examination.jsonl
+
+# Find all non-normal features
+jq 'select(.decision == "non_normal") | .feature' \
+  logs/ndjson/statistical_examination.jsonl
+```
+
+**Reference**: [docs/forensic/E2E.md](../../../../../docs/forensic/E2E.md) for full pipeline documentation.
 
 ---
 

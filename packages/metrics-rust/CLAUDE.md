@@ -227,6 +227,76 @@ print(f"All bounded: {metrics.all_bounded()}")
 
 ---
 
+## Multi-Scale ITH Features (Arrow-Native)
+
+The `compute_multiscale_ith()` function computes ITH features across multiple lookback windows simultaneously, returning a PyArrow RecordBatch for efficient downstream processing.
+
+### Critical: `threshold_dbps` is for Column Naming Only
+
+```python
+from trading_fitness_metrics import MultiscaleIthConfig, compute_multiscale_ith
+
+config = MultiscaleIthConfig(
+    lookbacks=[20, 50, 100, 200, 500],
+    threshold_dbps=25,  # ← COLUMN NAMING ONLY, NOT computation parameter!
+)
+batch = compute_multiscale_ith(nav, config)
+```
+
+**IMPORTANT**: The `threshold_dbps` parameter in `MultiscaleIthConfig` is **purely for column naming**. It does NOT affect the TMAEG used in computation. The actual TMAEG is auto-calculated from data volatility:
+
+```
+tmaeg = 3.0 × MAD_std × sqrt(lookback), clamped to [0.001, 0.50]
+```
+
+This means if you compute features for thresholds `[25, 50, 100, 250]` from the **same NAV series**, all will produce **identical feature values** - only the column names differ (`ith_rb25_*`, `ith_rb50_*`, etc.).
+
+To get different feature values, you must fetch range bars at different thresholds (which produce different NAV series) BEFORE computing ITH.
+
+### Column Naming Convention
+
+```
+ith_rb{threshold}_lb{lookback}_{feature}
+
+Example: ith_rb25_lb100_bull_ed
+  - rb25: Range bar 25 dbps (for identification only)
+  - lb100: 100-bar lookback window
+  - bull_ed: Bull epoch density feature
+```
+
+### 8 Features per Lookback
+
+| Feature   | Full Name          | Range  | Description                        |
+| --------- | ------------------ | ------ | ---------------------------------- |
+| `bull_ed` | Bull epoch density | [0, 1] | Normalized bull epoch count        |
+| `bear_ed` | Bear epoch density | [0, 1] | Normalized bear epoch count        |
+| `bull_eg` | Bull excess gain   | [0, 1] | Normalized sum of bull excess      |
+| `bear_eg` | Bear excess gain   | [0, 1] | Normalized sum of bear excess      |
+| `bull_cv` | Bull intervals CV  | [0, 1] | Normalized bull coefficient of var |
+| `bear_cv` | Bear intervals CV  | [0, 1] | Normalized bear coefficient of var |
+| `max_dd`  | Maximum drawdown   | [0, 1] | Max drawdown in window             |
+| `max_ru`  | Maximum runup      | [0, 1] | Max runup in window                |
+
+### Sparse Wide Table Design
+
+When using `pl.concat(..., how='diagonal')` to combine multiple thresholds, the result is a **sparse wide table** with 75% structural sparsity:
+
+```
+┌─────────────────┬────────────┬───────────────┬───────────────┬─────────────┐
+│ threshold_dbps  │ symbol     │ ith_rb25_*    │ ith_rb50_*    │ ith_rb100_* │
+├─────────────────┼────────────┼───────────────┼───────────────┼─────────────┤
+│ 25              │ BTCUSDT    │ ✓ VALUES      │ null          │ null        │
+│ 50              │ BTCUSDT    │ null          │ ✓ VALUES      │ null        │
+│ 100             │ BTCUSDT    │ null          │ null          │ ✓ VALUES    │
+└─────────────────┴────────────┴───────────────┴───────────────┴─────────────┘
+```
+
+This is **by design** - each row only has values for its matching threshold's columns.
+
+**Reference**: [docs/forensic/E2E.md](../../docs/forensic/E2E.md) for full data structure documentation.
+
+---
+
 ## Rolling ITH Features (Time-Agnostic)
 
 The `compute_rolling_ith()` function computes ITH features over sliding windows,

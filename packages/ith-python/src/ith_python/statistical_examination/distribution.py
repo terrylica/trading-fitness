@@ -25,6 +25,7 @@ import polars as pl
 from scipy import stats as sp_stats
 
 from ith_python.statistical_examination._utils import get_feature_columns
+from ith_python.telemetry.events import log_hypothesis_result
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -117,12 +118,31 @@ def analyze_beta_fit(
         # Also fit Beta params for reporting
         alpha, beta_param, _, _ = sp_stats.beta.fit(clipped, floc=0, fscale=1)
 
+        fits_well = p_value > 0.05
+
+        # Emit hypothesis telemetry for Anderson-Darling Beta fit test
+        log_hypothesis_result(
+            hypothesis_id=f"beta_fit_ad_{id(values)}",
+            test_name="anderson_darling_beta",
+            statistic=ad_stat,
+            p_value=p_value,
+            decision="fits_well" if fits_well else "poor_fit",
+            effect_size=None,
+            context={
+                "alpha": float(alpha),
+                "beta": float(beta_param),
+                "n_samples": len(values),
+                "stage_used": stage,
+                "n_mc_samples": 999 if stage == 2 else 99,
+            },
+        )
+
         return {
             "alpha": float(alpha),
             "beta": float(beta_param),
             "ad_statistic": ad_stat,
             "ad_p_value": p_value,
-            "fits_well": p_value > 0.05,
+            "fits_well": fits_well,
             "stage_used": stage,
             "method": "Anderson-Darling with parametric bootstrap",
         }
@@ -194,6 +214,21 @@ def analyze_distribution(
     try:
         shapiro_stat, shapiro_p = sp_stats.shapiro(shapiro_sample)
         gaussianity = _classify_gaussianity(shapiro_stat)
+
+        # Emit hypothesis telemetry for Shapiro-Wilk test
+        log_hypothesis_result(
+            hypothesis_id=f"shapiro_wilk_{feature_col}",
+            test_name="shapiro_wilk",
+            statistic=float(shapiro_stat),
+            p_value=float(shapiro_p),
+            decision="practically_normal" if gaussianity == "practically_normal" else "non_normal",
+            effect_size=float(shapiro_stat),  # W statistic as effect measure
+            context={
+                "feature": feature_col,
+                "n_samples": len(shapiro_sample),
+                "gaussianity_class": gaussianity,
+            },
+        )
     except ValueError:
         # Shapiro fails with constant or insufficient data
         shapiro_stat, shapiro_p = np.nan, np.nan

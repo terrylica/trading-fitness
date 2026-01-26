@@ -24,6 +24,7 @@ import polars as pl
 from scipy import stats as sp_stats
 
 from ith_python.statistical_examination._utils import get_feature_columns
+from ith_python.telemetry.events import log_hypothesis_result
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -303,6 +304,24 @@ def analyze_regime_dependence(
         # 2. Cliff's Delta (non-parametric, primary effect size)
         delta = cliffs_delta(trending, mean_rev)
         delta_interpretation = interpret_cliffs_delta(delta)
+
+        # Emit hypothesis telemetry for Mann-Whitney regime test
+        log_hypothesis_result(
+            hypothesis_id=f"regime_mann_whitney_{col}",
+            test_name="mann_whitney_u",
+            statistic=float(stat),
+            p_value=float(p_value),
+            decision="regime_dependent" if p_value < 0.05 else "regime_invariant",
+            effect_size=delta,  # Cliff's Delta as primary effect size
+            context={
+                "feature": col,
+                "n_trending": len(trending),
+                "n_mean_reverting": len(mean_rev),
+                "cohens_d": d,
+                "cliffs_delta": delta,
+                "effect_magnitude": delta_interpretation,
+            },
+        )
 
         results.append({
             "feature": col,

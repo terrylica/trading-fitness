@@ -1,105 +1,127 @@
 # Trading Fitness
 
-> Full polyglot monorepo for trading strategy fitness analysis.
+> Polyglot monorepo for time-agnostic trading strategy fitness analysis using ITH (Investment Time Horizon) methodology.
 
 ## Quick Reference
 
-| Action           | Command             |
-| ---------------- | ------------------- |
-| Run ITH analysis | `mise run analyze`  |
-| Run tests        | `mise run test`     |
-| Lint             | `mise run lint`     |
-| List affected    | `mise run affected` |
+| Action            | Command                      |
+| ----------------- | ---------------------------- |
+| Full E2E pipeline | `mise run forensic:pipeline` |
+| Run ITH analysis  | `mise run analyze`           |
+| Run tests         | `mise run test`              |
+| Preflight checks  | `mise run preflight:warmup`  |
 
 ## Package Map
 
-| Package                                         | Language      | Purpose                           | Tests | Docs                                 |
-| ----------------------------------------------- | ------------- | --------------------------------- | ----- | ------------------------------------ |
-| [ith-python](packages/ith-python/CLAUDE.md)     | Python        | ITH fitness analysis (PRIMARY)    | 100   | [→](packages/ith-python/CLAUDE.md)   |
-| [metrics-rust](packages/metrics-rust/CLAUDE.md) | Rust + Python | BiLSTM metrics with PyO3 bindings | 95    | [→](packages/metrics-rust/CLAUDE.md) |
-| [core-rust](packages/core-rust/CLAUDE.md)       | Rust          | Performance-critical compute      | 14    | [→](packages/core-rust/CLAUDE.md)    |
-| [core-bun](packages/core-bun/CLAUDE.md)         | Bun/TS        | Async I/O, APIs, metrics          | 32    | [→](packages/core-bun/CLAUDE.md)     |
-| [shared-types](packages/shared-types/CLAUDE.md) | Multi         | JSON Schema type definitions      | -     | [→](packages/shared-types/CLAUDE.md) |
+| Package                                         | Language      | Purpose                         | Docs                                 |
+| ----------------------------------------------- | ------------- | ------------------------------- | ------------------------------------ |
+| [ith-python](packages/ith-python/CLAUDE.md)     | Python        | ITH fitness analysis (PRIMARY)  | [→](packages/ith-python/CLAUDE.md)   |
+| [metrics-rust](packages/metrics-rust/CLAUDE.md) | Rust + Python | Multi-scale ITH + PyO3 bindings | [→](packages/metrics-rust/CLAUDE.md) |
+| [core-rust](packages/core-rust/CLAUDE.md)       | Rust          | Performance-critical compute    | [→](packages/core-rust/CLAUDE.md)    |
+| [core-bun](packages/core-bun/CLAUDE.md)         | Bun/TS        | Async I/O, APIs                 | [→](packages/core-bun/CLAUDE.md)     |
+| [shared-types](packages/shared-types/CLAUDE.md) | Multi         | JSON Schema type definitions    | [→](packages/shared-types/CLAUDE.md) |
 
-## Data Flow
+## Documentation Hub
+
+| Topic               | Location                                                                                                                       | Purpose                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| ITH Methodology     | [docs/ITH.md](docs/ITH.md)                                                                                                     | Core algorithm and fitness criteria      |
+| Feature Registry    | [docs/features/REGISTRY.md](docs/features/REGISTRY.md)                                                                         | All extractable features (SSoT)          |
+| Logging Contract    | [docs/LOGGING.md](docs/LOGGING.md)                                                                                             | NDJSON telemetry format                  |
+| Forensic Analysis   | [docs/forensic/E2E.md](docs/forensic/E2E.md)                                                                                   | E2E pipeline and artifact interpretation |
+| Architecture Plan   | [docs/plans/2026-01-25-multi-view-feature-architecture-plan.md](docs/plans/2026-01-25-multi-view-feature-architecture-plan.md) | 3-layer separation of concerns           |
+| SR&ED Documentation | [docs/SRED.md](docs/SRED.md)                                                                                                   | CRA tax credit tracking                  |
+
+---
+
+## Architecture: Multi-View Feature Pipeline
 
 ```
-data/nav_data_custom/*.csv  -->  [ith-python]  -->  artifacts/synth_ithes/
-                                      |
-                                      v
-                              artifacts/results.html
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│ Layer 1: Compute │───▶│ Layer 2: Storage │───▶│ Layer 3: Analysis│
+│   features/      │    │   storage/       │    │   analysis/      │
+│                  │    │                  │    │                  │
+│ Rust multiscale  │    │ Long Format SSoT │    │ Statistical eval │
+│ ITH features     │    │ + View Generators│    │ + NDJSON emit    │
+└──────────────────┘    └──────────────────┘    └──────────────────┘
 ```
 
-## Directory Structure
+| Layer | Module                | Upgrade Command             |
+| ----- | --------------------- | --------------------------- |
+| 1     | `ith_python.features` | `mise run upgrade:features` |
+| 2     | `ith_python.storage`  | `mise run upgrade:views`    |
+| 3     | `ith_python.analysis` | `mise run upgrade:analysis` |
+
+**Key classes**: `FeatureConfig`, `FeatureStore`, `AnalysisConfig`, `AnalysisResults`
+
+**Deep Dive**: [packages/ith-python/CLAUDE.md](packages/ith-python/CLAUDE.md)
+
+---
+
+## ITH Concept (Essential)
+
+ITH (Investment Time Horizon) is a **time-agnostic** fitness metric that counts threshold crossings rather than calendar time.
 
 ```
-trading-fitness/
-├── .claude/
-│   └── skills/              # Claude Code skill modules (Python, Rust, Bun)
-├── packages/
-│   ├── ith-python/          # Primary Python analysis package
-│   ├── metrics-rust/        # BiLSTM metrics with Python bindings (PyO3)
-│   ├── core-rust/           # Rust performance-critical code
-│   ├── core-bun/            # Bun/TS async I/O, APIs
-│   └── shared-types/        # Cross-language schemas
-├── services/                # Future deployable services
-├── data/                    # Input data (TRACKED)
-│   └── nav_data_custom/     # Custom NAV CSV files
-├── artifacts/               # Generated outputs (GITIGNORED)
-│   └── synth_ithes/         # Analysis results
-├── logs/                    # JSONL logs (GITIGNORED)
-├── rules/                   # ast-grep rule directories
-├── scripts/                 # Automation (benchmarks, code generation)
-└── docs/                    # Documentation
+NAV Series → Rolling Window → Count Epochs → Normalize [0,1] → BiLSTM Features
 ```
 
-## ITH (Investment Time Horizon) Concept
-
-ITH analysis evaluates trading strategy fitness using TMAEG (Target Maximum Acceptable Excess Gain) thresholds:
-
-- **TMAEG**: Drawdown-based hurdle for counting ITH epochs
-- **ITH Epochs**: Time periods where strategy exceeds performance thresholds
-- **Fitness Criteria**: Minimum epoch count, Sharpe ratio bounds, coefficient of variation
+**Key insight**: TMAEG (threshold) is **auto-calculated** from data volatility using MAD-based estimation. The `threshold_dbps` parameter is for **column naming only**, not computation.
 
 **Deep Dive**: [docs/ITH.md](docs/ITH.md)
 
+---
+
 ## Terminology
 
-| Term                 | Definition                                                                                  | Unit/Range                |
-| -------------------- | ------------------------------------------------------------------------------------------- | ------------------------- |
-| **ITH**              | Investment Time Horizon - time-agnostic fitness metric counting threshold crossings         | epochs                    |
-| **TMAEG**            | Target Maximum Acceptable Excess Gain - drawdown-based hurdle for epoch counting            | decimal (e.g., 0.05 = 5%) |
-| **MCOT**             | Minimum Cost of Trade - floor value for TMAEG representing transaction costs                | dbps                      |
-| **Maximum Drawdown** | Worst decline from peak: `1 - (trough/peak)`. Adverse movement for long positions.          | [0, 1]                    |
-| **Maximum Runup**    | Worst rise from trough: `1 - (trough/current)`. Adverse movement for short positions.       | [0, 1]                    |
-| **Bull ITH**         | ITH for long positions. TMAEG = max(Max Drawdown, MCOT). Epochs count excess gains.         | epochs                    |
-| **Bear ITH**         | ITH for short positions. TMAEG = max(Max Runup, MCOT). Epochs count excess gains (inverse). | epochs                    |
-| **NAV**              | Net Asset Value - normalized price series starting at 1.0                                   | ratio                     |
-| **Epoch**            | Period where cumulative excess gain exceeds TMAEG threshold, triggering reset               | count                     |
-| **CV**               | Coefficient of Variation - `std(intervals) / mean(intervals)`. Measures epoch regularity.   | [0, ∞)                    |
-| **dbps**             | Decimal basis points. 1 dbps = 0.01% = 0.0001. Used for MCOT and thresholds.                | 1 dbps = 0.0001           |
+| Term       | Definition                                                | Range        |
+| ---------- | --------------------------------------------------------- | ------------ |
+| **ITH**    | Investment Time Horizon - epoch count metric              | epochs       |
+| **TMAEG**  | Target Maximum Acceptable Excess Gain (auto-calculated)   | [0.001, 0.5] |
+| **NAV**    | Net Asset Value - normalized price series starting at 1.0 | ratio        |
+| **Epoch**  | Period where excess gain exceeds TMAEG, triggering reset  | count        |
+| **dbps**   | Decimal basis points (1 dbps = 0.0001 = 0.01%)            | unit         |
+| **Warmup** | Initial bars with NaN values (max_lookback - 1 bars)      | bars         |
 
-## Documentation
+### Feature Short Names (8 per lookback)
 
-| Topic                                                                       | Location       | Purpose                              |
-| --------------------------------------------------------------------------- | -------------- | ------------------------------------ |
-| [Architecture](docs/ARCHITECTURE.md)                                        | docs/          | System design, tech stack, data flow |
-| [ITH Methodology](docs/ITH.md)                                              | docs/          | Core algorithm and fitness criteria  |
-| [Feature Registry](docs/features/REGISTRY.md)                               | docs/features/ | All extractable features (SSoT)      |
-| [Logging Contract](docs/LOGGING.md)                                         | docs/          | NDJSON format, structured logging    |
-| [SR&ED Tracking](docs/SRED.md)                                              | docs/          | Tax credit evidence and claims       |
-| [Observability Plan](docs/plans/2026-01-25-observability-telemetry-plan.md) | docs/plans/    | Telemetry enhancement roadmap        |
-| [Session Resume](RESUME.md)                                                 | root           | Continue work from last session      |
+| Full Name          | Short   | Range | Description                   |
+| ------------------ | ------- | ----- | ----------------------------- |
+| bull_epoch_density | bull_ed | [0,1] | Normalized bull epoch count   |
+| bear_epoch_density | bear_ed | [0,1] | Normalized bear epoch count   |
+| bull_excess_gain   | bull_eg | [0,1) | tanh-normalized excess gain   |
+| bear_excess_gain   | bear_eg | [0,1) | tanh-normalized excess gain   |
+| bull_cv            | bull_cv | (0,1) | Intervals coefficient of var. |
+| bear_cv            | bear_cv | (0,1) | Intervals coefficient of var. |
+| max_drawdown       | max_dd  | [0,1] | Maximum drawdown in window    |
+| max_runup          | max_ru  | [0,1] | Maximum runup in window       |
 
-## MCP Servers
+---
 
-Configured in `.mcp.json`:
+## Warmup Handling
 
-| Server        | Purpose                                   |
-| ------------- | ----------------------------------------- |
-| `mise`        | Task runner and environment management    |
-| `code-search` | Semantic code search via ck               |
-| `ast-grep`    | Structural code search and transformation |
+Each lookback window requires `(lookback - 1)` bars of history before producing valid values.
+
+| Lookback | Warmup Bars | First Valid Bar |
+| -------- | ----------- | --------------- |
+| lb20     | 19          | bar_index = 19  |
+| lb50     | 49          | bar_index = 49  |
+| lb100    | 99          | bar_index = 99  |
+| lb200    | 199         | bar_index = 199 |
+| lb500    | 499         | bar_index = 499 |
+
+**Preflight check**: `mise run preflight:warmup` validates data sufficiency.
+
+**In code**:
+
+```python
+from ith_python.storage import validate_warmup, get_warmup_bars
+
+is_valid, info = validate_warmup(n_bars=2000, lookbacks=[20,50,100,200,500])
+# info["warmup_bars"] = 499, info["valid_bars"] = 1501
+```
+
+---
 
 ## Development
 
@@ -107,89 +129,75 @@ Configured in `.mcp.json`:
 
 ```bash
 cd packages/ith-python
-uv sync                      # Install dependencies
-uv run python -m ith_python.ith  # Run analysis
-uv run pytest                # Run tests
-uv run ruff check --fix      # Lint
-```
-
-### Rust (core-rust)
-
-```bash
-cd packages/core-rust
-cargo check                  # Verify compilation
-cargo test                   # Run tests
+uv sync                           # Install dependencies
+uv run pytest                     # Run tests
 ```
 
 ### Rust + Python (metrics-rust)
 
 ```bash
-cd packages/metrics-rust
-cargo test                         # Rust tests
-maturin build --features python    # Build Python wheel
-# Install: uv pip install target/wheels/*.whl
+cargo nextest run -p trading-fitness-metrics   # Rust tests
+mise run develop:metrics-rust                  # Build + install into venv
 ```
 
-**Python Usage**: See [metrics-rust/CLAUDE.md](packages/metrics-rust/CLAUDE.md) for API reference.
-
-### Bun (core-bun)
+### Forensic Pipeline
 
 ```bash
-cd packages/core-bun
-bun run index.ts             # Run entry point
-bun test                     # Run tests
+mise run forensic:pipeline         # Full E2E (new architecture)
+mise run forensic:e2e              # Legacy E2E with ClickHouse data
+mise run forensic:hypothesis-audit # Audit hypothesis test results
 ```
-
-## Configuration
-
-- **mise.toml**: Runtime versions (SSoT), tasks, environment
-- **sgconfig.yml**: ast-grep rules configuration
-- **.mcp.json**: MCP server definitions
-
-## Git Workflow
-
-This repository uses git-town for branch workflow automation.
-
-**Configuration**:
-
-```bash
-git config git-town.main-branch main
-git config git-town.push-new-branches true
-git config git-town.sync-feature-strategy rebase
-```
-
-**Workflow**:
-
-| Task                  | Command           |
-| --------------------- | ----------------- |
-| Create feature branch | `git town hack`   |
-| Sync with main        | `git town sync`   |
-| Create PR and merge   | `git town ship`   |
-| Switch branches       | `git town switch` |
-
-**Environment**: Uses `read_file()` pattern in mise.toml for GH_TOKEN (prevents process storms).
-
-## SR&ED Documentation
-
-This project tracks SR&ED (Scientific Research & Experimental Development) eligible work for CRA tax credits.
-
-**Deep Dive**: [docs/SRED.md](docs/SRED.md)
-
-| Commit Types                               | Labels                                 |
-| ------------------------------------------ | -------------------------------------- |
-| `experiment:`, `research:`, `uncertainty:` | `sred:uncertainty`, `sred:advancement` |
-| `advancement:`, `hypothesis:`, `analysis:` | `sred:experiment`, `sred:research`     |
-| `iteration:`, `benchmark:`                 | `sred:eligible`                        |
-
-## Migration History
-
-Consolidated from:
-
-- `~/scripts/personal/fitness/custom-fitness/ith/` (ith.py, results.html)
-- `~/eon/tl-ml-feature-set/experiments/ith_numba.py`
-- `~/Documents/ith-fitness/` (artifacts)
-- `~/Library/Application Support/ith-fitness/` (cached analysis)
 
 ---
 
-_Polyglot Monorepo - Trading Strategy Fitness Analysis_
+## Configuration
+
+| File           | Purpose                                         |
+| -------------- | ----------------------------------------------- |
+| `mise.toml`    | Runtime versions, tasks, `UV_PYTHON=python3.13` |
+| `.mcp.json`    | MCP servers (mise, code-search, ast-grep)       |
+| `sgconfig.yml` | ast-grep rules configuration                    |
+
+---
+
+## Directory Structure
+
+```
+trading-fitness/
+├── packages/
+│   ├── ith-python/          # Primary Python package
+│   │   └── src/ith_python/
+│   │       ├── features/          # Layer 1: Feature computation
+│   │       ├── storage/           # Layer 2: FeatureStore + views
+│   │       ├── analysis/          # Layer 3: Statistical analysis
+│   │       ├── telemetry/         # Provenance tracking
+│   │       └── statistical_examination/  # ML readiness (legacy)
+│   ├── metrics-rust/        # Rust ITH + PyO3 bindings
+│   ├── core-rust/           # Performance-critical Rust
+│   ├── core-bun/            # Async I/O (Bun/TS)
+│   └── shared-types/        # JSON Schema definitions
+├── docs/
+│   ├── ITH.md               # Core methodology
+│   ├── LOGGING.md           # Telemetry contract
+│   ├── features/REGISTRY.md # Feature SSoT
+│   ├── forensic/E2E.md      # Pipeline documentation
+│   └── plans/               # Implementation plans
+├── artifacts/               # Generated outputs (gitignored)
+└── logs/ndjson/             # NDJSON telemetry logs
+```
+
+---
+
+## Git Workflow
+
+Uses git-town for branch automation:
+
+```bash
+git town hack     # Create feature branch
+git town sync     # Sync with main
+git town ship     # Create PR and merge
+```
+
+---
+
+_Polyglot Monorepo - Time-Agnostic Trading Strategy Fitness Analysis_
