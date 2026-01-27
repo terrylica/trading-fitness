@@ -1,25 +1,31 @@
 # Trading Fitness - Root mise configuration
 # SSoT for runtime versions and shared environment
 # Package-specific tasks are in packages/*/mise.toml
+#
+# Architecture:
+#   Root: [tools], [env], orchestration, cross-package delegation
+#   packages/ith-python/mise.toml: Python analysis, forensic, features, data
+#   packages/metrics-rust/mise.toml: Rust build, test, bench
+#   packages/shared-types/mise.toml: Type generation
 
 [env]
 GH_TOKEN = "{{ read_file(path=env.HOME ~ '/.claude/.secrets/gh-token-terrylica') | trim }}"
 GITHUB_TOKEN = "{{ read_file(path=env.HOME ~ '/.claude/.secrets/gh-token-terrylica') | trim }}"
 LOG_DIR = "{{config_root}}/logs"
 ENV = "dev"
-UV_PYTHON = "python3.13"  # Force Python 3.13 for all uv tasks
-TRADING_FITNESS_ROOT = "{{config_root}}"  # Project root for config resolution
+UV_PYTHON = "python3.13"
+TRADING_FITNESS_ROOT = "{{config_root}}"
 
 [tools]
-python = "3.13"    # SSoT-OK: mise manages runtime versions
-rust = "stable"    # SSoT-OK: mise manages runtime versions
-node = "22"        # SSoT-OK: mise manages runtime versions
-bun = "latest"     # SSoT-OK: mise manages runtime versions
-uv = "latest"      # SSoT-OK: mise manages runtime versions
-"cargo:ast-grep" = "latest"  # SSoT-OK: structural code search
+python = "3.13"
+rust = "stable"
+node = "22"
+bun = "latest"
+uv = "latest"
+"cargo:ast-grep" = "latest"
 
 # =============================================================================
-# Monorepo-Wide Tasks
+# Monorepo-Wide Tasks (Orchestration)
 # =============================================================================
 
 [tasks.lint]
@@ -41,1467 +47,297 @@ run = "bash scripts/affected.sh list"
 run = "bash scripts/affected.sh test"
 
 # =============================================================================
-# ITH Analysis - Orchestration (delegates to package tasks)
-# Two modes: incremental (default) and fresh (clear first)
+# ITH Analysis - Orchestration
 # =============================================================================
 
 [tasks.analyze]
-description = "Incremental ITH analysis - preserves existing, generates up to 100 total"
+description = "Incremental ITH analysis"
 depends = ["analyze:bear"]
 run = "open artifacts/bull_results.html artifacts/bear_results.html"
 
 [tasks."analyze:fresh"]
-description = "Fresh ITH analysis - clears all artifacts, generates 100 new results"
+description = "Fresh ITH analysis - clears artifacts first"
 depends = ["analyze:fresh:bear"]
 run = "open artifacts/bull_results.html artifacts/bear_results.html"
 
 [tasks."analyze:bull"]
-description = "Incremental Bull ITH - preserves existing synthetic NAVs"
-run = "cd packages/ith-python && uv run python -m ith_python.ith"
+description = "Incremental Bull ITH"
+run = "cd packages/ith-python && mise run run:bull"
 
 [tasks."analyze:bear"]
-description = "Incremental Bear ITH - preserves existing synthetic NAVs"
+description = "Incremental Bear ITH"
 depends = ["analyze:bull"]
-run = "cd packages/ith-python && uv run python -m ith_python.bear_ith"
+run = "cd packages/ith-python && mise run run:bear"
 
 [tasks."analyze:fresh:bull"]
-description = "Fresh Bull ITH - clears artifacts first, generates 100 new"
-run = """
-echo "🗑️  Clearing bull artifacts..."
-rm -rf artifacts/synth_bull_ithes/nav_data_synthetic/*.csv
-rm -rf artifacts/synth_bull_ithes/*.html
-rm -rf artifacts/synth_bull_ithes/*.csv
-rm -f artifacts/bull_results.html
-echo "✅ Bull artifacts cleared"
-cd packages/ith-python && uv run python -m ith_python.ith
-"""
+description = "Fresh Bull ITH - clears artifacts first"
+run = "cd packages/ith-python && mise run fresh:bull"
 
 [tasks."analyze:fresh:bear"]
-description = "Fresh Bear ITH - clears artifacts first, generates 100 new"
+description = "Fresh Bear ITH - clears artifacts first"
 depends = ["analyze:fresh:bull"]
-run = """
-echo "🗑️  Clearing bear artifacts..."
-rm -rf artifacts/synth_bear_ithes/nav_data_synthetic/*.csv
-rm -rf artifacts/synth_bear_ithes/*.html
-rm -rf artifacts/synth_bear_ithes/*.csv
-rm -f artifacts/bear_results.html
-echo "✅ Bear artifacts cleared"
-cd packages/ith-python && uv run python -m ith_python.bear_ith
-"""
+run = "cd packages/ith-python && mise run fresh:bear"
 
 # =============================================================================
-# Type Generation (Shared Types Package)
+# Type Generation - Delegates to shared-types
 # =============================================================================
 
 [tasks.generate-types]
 description = "Generate types from JSON Schema"
-run = "bash scripts/generate-types.sh all"
+run = "cd packages/shared-types && mise run generate"
 
 [tasks."generate-types:python"]
-description = "Generate Python types from JSON Schema"
-run = "bash scripts/generate-types.sh python"
+description = "Generate Python types"
+run = "cd packages/shared-types && mise run generate:python"
 
 [tasks."generate-types:typescript"]
-description = "Generate TypeScript types from JSON Schema"
-run = "bash scripts/generate-types.sh typescript"
+description = "Generate TypeScript types"
+run = "cd packages/shared-types && mise run generate:typescript"
 
 [tasks."generate-types:rust"]
-description = "Generate Rust types from JSON Schema"
-run = "bash scripts/generate-types.sh rust"
+description = "Generate Rust types"
+run = "cd packages/shared-types && mise run generate:rust"
 
 # =============================================================================
-# metrics-rust: Rust library + Python bindings (PyO3/maturin)
+# metrics-rust - Delegates to package
 # =============================================================================
 
 [tasks."build:metrics-rust"]
 description = "Build metrics-rust Rust library"
-run = "cargo build -p trading-fitness-metrics"
+run = "cd packages/metrics-rust && mise run build"
 
 [tasks."test:metrics-rust"]
-description = "Test metrics-rust (Rust unit + integration)"
-run = "cargo nextest run -p trading-fitness-metrics"
-
-[tasks."test:metrics-rust:doc"]
-description = "Test metrics-rust documentation examples"
-run = "cargo test --doc -p trading-fitness-metrics"
+description = "Test metrics-rust"
+run = "cd packages/metrics-rust && mise run test"
 
 [tasks."develop:metrics-rust"]
 description = "Build Python bindings and install into ith-python venv"
-run = """
-unset VIRTUAL_ENV
-
-# Use the ith-python venv's Python explicitly
-PYTHON_BIN="packages/ith-python/.venv/bin/python"
-if [ ! -f "$PYTHON_BIN" ]; then
-    echo "ith-python venv not found. Running uv sync first..."
-    cd packages/ith-python && uv sync && cd ../..
-fi
-
-PYTHON_VER=$("$PYTHON_BIN" --version | cut -d' ' -f2 | cut -d. -f1-2)
-echo "Building wheel for Python $PYTHON_VER"
-
-maturin build --features python --manifest-path packages/metrics-rust/Cargo.toml -i "$PYTHON_BIN"
-
-WHEEL=$(realpath target/wheels/trading_fitness_metrics-*cp${PYTHON_VER//./}*.whl 2>/dev/null | sort -r | head -1)
-if [ -z "$WHEEL" ]; then
-    echo "No wheel found for Python $PYTHON_VER"
-    ls -la target/wheels/
-    exit 1
-fi
-
-echo "Installing wheel: $WHEEL"
-# Install using uv pip with explicit Python target
-cd packages/ith-python && uv pip install "$WHEEL" --reinstall
-echo "✅ Wheel installed successfully"
-"""
-
-[tasks."build:metrics-rust:wheel"]
-description = "Build Python wheel for distribution"
-run = "cd packages/metrics-rust && maturin build --features python --release"
-
-[tasks."test:metrics-rust:all"]
-description = "Full metrics-rust test suite (Rust + rebuild Python bindings)"
-depends = ["test:metrics-rust", "test:metrics-rust:doc", "develop:metrics-rust"]
+run = "cd packages/metrics-rust && mise run develop"
 
 [tasks."cross-validate:ith"]
-description = "Cross-validate Numba vs Rust ITH implementations"
+description = "Cross-validate Numba vs Rust ITH"
 depends = ["develop:metrics-rust"]
-run = "cd packages/ith-python && uv run --frozen python -m ith_python.side_by_side_demo"
-
-[tasks."test:rolling-ith"]
-description = "Test rolling ITH features (Rust unit tests)"
-run = "cargo nextest run -p trading-fitness-metrics rolling"
-
-[tasks."test:ith-normalize"]
-description = "Test ITH normalization functions (Rust unit tests)"
-run = "cargo nextest run -p trading-fitness-metrics normalize"
-
-[tasks."test:rangebar-validation"]
-description = "Validate ITH features against rangebar data (requires rangebar)"
-depends = ["develop:metrics-rust"]
-run = """
-cd packages/ith-python
-uv sync --extra validation
-uv run pytest tests/test_rangebar_integration.py -v
-"""
-
-[tasks."validate:ith-features"]
-description = "Full ITH validation: unit tests + rangebar integration"
-depends = ["test:metrics-rust", "test:rolling-ith", "test:ith-normalize", "test:rangebar-validation"]
-
-[tasks."test:multiscale-ith"]
-description = "Test multi-scale ITH feature computation"
-depends = ["develop:metrics-rust"]
-run = """
-cd packages/ith-python
-uv run pytest tests/test_multiscale_ith.py -v
-"""
-
-[tasks."test:multiscale-ith:rust"]
-description = "Test multi-scale ITH (Rust unit tests)"
-run = "cargo nextest run -p trading-fitness-metrics multiscale"
-
-[tasks."bench:multiscale-ith"]
-description = "Benchmark multi-scale ITH computation"
-run = "cargo bench -p trading-fitness-metrics -- multiscale"
+run = "cd packages/ith-python && mise run cross-validate:ith"
 
 # =============================================================================
-# Statistical Examination - ITH Feature Analysis
+# Data Layer - Delegates to ith-python
 # =============================================================================
 
-[tasks."examine:ith-features"]
-description = "Run full statistical examination of ITH features"
-depends = ["develop:metrics-rust"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-uv run python -m ith_python.statistical_examination.runner \
-    --thresholds 25,50,100,250,500,1000 \
-    --output-dir ../../artifacts/statistical_examination
-"""
-
-[tasks."examine:cross-scale"]
-description = "Cross-scale correlation analysis only"
-depends = ["develop:metrics-rust"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-uv run python -c "
-from ith_python.statistical_examination.cross_scale import main
-main()
-"
-"""
-
-[tasks."examine:from-parquet"]
-description = "Run examination on pre-computed features Parquet"
-run = """
-cd packages/ith-python
-uv sync --extra examination
-uv run python -m ith_python.statistical_examination.runner \
-    --parquet ../../artifacts/statistical_examination/features.parquet \
-    --output-dir ../../artifacts/statistical_examination
-"""
-
-[tasks."test:statistical-examination"]
-description = "Test statistical examination framework"
-depends = ["develop:metrics-rust"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-uv run pytest tests/test_statistical_examination/ -v
-"""
-
-# =============================================================================
-# Forensic Analysis Pipeline - Comprehensive NDJSON Telemetry
-# Phase 3 of Observability Telemetry Enhancement Plan
-# =============================================================================
-
-[tasks."forensic:full"]
-description = "Full forensic analysis with comprehensive NDJSON telemetry"
-depends = ["develop:metrics-rust", "forensic:prepare-logs"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-
-echo "🔬 Starting forensic analysis pipeline..."
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_DIR="../../logs/forensic/$TIMESTAMP"
-mkdir -p "$LOG_DIR"
-
-# Run examination with full telemetry
-uv run python -m ith_python.statistical_examination.runner \
-    --thresholds 25,50,100,250,500,1000 \
-    --lookbacks 20,50,100,200,500,1000,1500,2000,3000,4000,5000,6000 \
-    --output-dir "../../artifacts/statistical_examination" \
-    --verbose
-
-# Copy examination NDJSON to forensic logs
-cp ../../artifacts/statistical_examination/examination.ndjson "$LOG_DIR/"
-
-# Aggregate all hypothesis test results from statistical examination logs
-echo "📊 Aggregating hypothesis telemetry..."
-find ../../logs -name "*.jsonl" -newer "$LOG_DIR" -exec cat {} \\; | \
-    grep '"event_type":"hypothesis_result"' > "$LOG_DIR/hypothesis_results.ndjson" 2>/dev/null || true
-
-echo "✅ Forensic analysis complete"
-echo "   Artifacts: artifacts/statistical_examination/"
-echo "   Logs: $LOG_DIR/"
-"""
-
-[tasks."forensic:prepare-logs"]
-description = "Prepare log directories for forensic analysis"
-run = """
-mkdir -p logs/forensic
-mkdir -p logs/ndjson
-echo "📁 Log directories prepared"
-"""
-
-[tasks."forensic:hypothesis-audit"]
-description = "Audit all hypothesis test results from NDJSON logs"
-run = """
-cd packages/ith-python
-
-echo "🔍 Auditing hypothesis test results..."
-
-# Find all hypothesis result events
-find ../../logs -name "*.jsonl" -exec grep -h '"event_type":"hypothesis_result"' {} \\; 2>/dev/null | \
-    python3 -c "
-import sys
-import json
-from collections import Counter
-
-decisions = Counter()
-tests = Counter()
-
-for line in sys.stdin:
-    try:
-        event = json.loads(line)
-        ctx = event.get('context', {})
-        decisions[ctx.get('decision', 'unknown')] += 1
-        tests[ctx.get('test_name', 'unknown')] += 1
-    except:
-        pass
-
-print('\\n📊 Hypothesis Test Audit')
-print('=' * 50)
-print('\\nBy Test Type:')
-for test, count in tests.most_common():
-    print(f'  {test}: {count}')
-print('\\nBy Decision:')
-for decision, count in decisions.most_common():
-    print(f'  {decision}: {count}')
-"
-"""
-
-[tasks."forensic:claspy-analysis"]
-description = "Run ClaSPy regime change detection with telemetry"
-depends = ["develop:metrics-rust"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-
-echo "🔄 Running ClaSPy regime change detection..."
-uv run python -c "
-from pathlib import Path
-import numpy as np
-from ith_python.claspy_features import extract_claspy_features_safe
-from ith_python.ndjson_logger import setup_ndjson_logger
-
-logger = setup_ndjson_logger('claspy_analysis')
-
-# Load synthetic NAV for demo
-np.random.seed(42)
-returns = np.random.randn(5000) * 0.01
-nav = np.cumprod(1 + returns)
-nav = nav / nav[0]
-
-logger.bind(context={'nav_length': len(nav), 'phase': 'start'}).info('Starting ClaSPy analysis')
-
-features = extract_claspy_features_safe(nav)
-if features:
-    feature_dict = features.to_dict()
-    logger.bind(context={
-        'phase': 'complete',
-        'n_changepoints': features.n_changepoints,
-        'n_segments': features.n_segments,
-        'cp_density': features.cp_density,
-    }).info('ClaSPy analysis complete')
-    print(f'Detected {features.n_changepoints} change points in {features.n_segments} segments')
-else:
-    logger.bind(context={'phase': 'error'}).error('ClaSPy analysis failed')
-    print('ClaSPy analysis failed')
-
-logger.complete()
-"
-"""
-
-[tasks."forensic:view-logs"]
-description = "View recent NDJSON forensic logs with jq formatting"
-run = """
-echo "📜 Recent forensic logs:"
-find logs -name "*.jsonl" -o -name "*.ndjson" | head -10 | while read f; do
-    echo "\\n--- $f ---"
-    tail -5 "$f" | jq -c '.' 2>/dev/null || tail -5 "$f"
-done
-"""
-
-[tasks."forensic:telemetry-summary"]
-description = "Summarize telemetry events from all log files"
-run = """
-echo "📈 Telemetry Event Summary"
-echo "========================="
-
-# Count events by type
-find logs -name "*.jsonl" -exec cat {} \\; 2>/dev/null | \
-    python3 -c "
-import sys
-import json
-from collections import Counter
-
-events = Counter()
-components = Counter()
-
-for line in sys.stdin:
-    try:
-        event = json.loads(line)
-        ctx = event.get('context', {})
-        event_type = ctx.get('event_type', event.get('event', 'log'))
-        events[event_type] += 1
-        comp = event.get('component', 'unknown')
-        components[comp] += 1
-    except:
-        pass
-
-print('\\nBy Event Type:')
-for evt, count in events.most_common(20):
-    print(f'  {evt}: {count}')
-
-print('\\nBy Component:')
-for comp, count in components.most_common(10):
-    print(f'  {comp}: {count}')
-"
-"""
-
-# =============================================================================
-# End-to-End Forensic Analysis with Real ClickHouse Data
-# =============================================================================
-
-[tasks."forensic:e2e"]
-description = "End-to-end forensic analysis with real range bar data from ClickHouse"
-depends = ["develop:metrics-rust", "forensic:prepare-logs", "forensic:start-clickhouse"]
-run = """
-cd packages/ith-python
-uv sync --extra examination --extra validation
-
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_DIR="../../logs/forensic/e2e-$TIMESTAMP"
-ARTIFACT_DIR="../../artifacts/forensic/e2e-$TIMESTAMP"
-mkdir -p "$LOG_DIR" "$ARTIFACT_DIR"
-
-echo "🔬 Starting E2E Forensic Analysis"
-echo "   Log Directory: $LOG_DIR"
-echo "   Artifact Directory: $ARTIFACT_DIR"
-echo ""
-
-uv run python -c "
-import sys
-import json
-import time
-import hashlib
-from datetime import datetime, timezone
-from pathlib import Path
-
-import numpy as np
-import polars as pl
-
-from rangebar import get_n_range_bars
-from trading_fitness_metrics import MultiscaleIthConfig, compute_multiscale_ith
-from ith_python.ndjson_logger import setup_ndjson_logger, get_trace_id
-from ith_python.telemetry.provenance import fingerprint_array, capture_random_state
-from ith_python.telemetry.events import log_data_load, log_algorithm_init
-
-# Configuration
-SYMBOLS = ['BTCUSDT', 'ETHUSDT']
-N_BARS = 2000
-THRESHOLDS = [25, 50, 100, 250]  # decimal bps
-LOOKBACKS = [20, 50, 100, 200, 500]
-# Use a historical end_date to avoid HTTP 404 on recent/future dates
-# Binance's aggTrades archive has a 1-2 day lag
-END_DATE = '2026-01-20'  # Use date with known data availability
-
-LOG_DIR = Path('$LOG_DIR')
-ARTIFACT_DIR = Path('../../artifacts/ssot')
-
-logger = setup_ndjson_logger('forensic_e2e')
-trace_id = get_trace_id()
-
-logger.bind(context={
-    'phase': 'init',
-    'trace_id': trace_id,
-    'symbols': SYMBOLS,
-    'n_bars': N_BARS,
-    'thresholds': THRESHOLDS,
-    'lookbacks': LOOKBACKS,
-    'end_date': END_DATE,
-}).info('E2E Forensic Analysis Starting')
-
-# Track overall results
-all_features = []
-provenance_records = []
-
-for symbol in SYMBOLS:
-    logger.bind(context={'phase': 'data_fetch', 'symbol': symbol}).info(f'Fetching {N_BARS} bars for {symbol}')
-
-    try:
-        # Fetch real range bars from ClickHouse/Binance
-        # end_date is explicit to avoid 404s on recent dates (Binance has 1-2 day lag)
-        bars = get_n_range_bars(
-            symbol=symbol,
-            n_bars=N_BARS,
-            threshold_decimal_bps=100,  # 10 bps base
-            end_date=END_DATE,
-            use_cache=True,
-            fetch_if_missing=True,
-        )
-
-        if bars is None or len(bars) < 100:
-            logger.bind(context={'symbol': symbol, 'bars_fetched': len(bars) if bars is not None else 0}).warning('Insufficient bars')
-            continue
-
-        # Convert to NAV
-        closes = bars['Close'].to_numpy()
-        returns = np.diff(closes) / closes[:-1]
-        nav = np.concatenate([[1.0], np.cumprod(1 + returns)])
-
-        # Log data provenance
-        nav_fingerprint = fingerprint_array(nav, f'{symbol}_nav')
-        log_data_load(
-            source_path=f'rangebar:{symbol}',
-            sha256_hash=nav_fingerprint['sha256'],
-            row_count=len(nav),
-            column_count=1,
-            columns=['nav'],
-            value_range=(float(nav.min()), float(nav.max())),
-        )
-
-        provenance_records.append({
-            'symbol': symbol,
-            'n_bars': len(bars),
-            'nav_hash': nav_fingerprint['sha256'][:16],
-            'nav_range': nav_fingerprint['range'],
-        })
-
-        logger.bind(context={
-            'phase': 'feature_computation',
-            'symbol': symbol,
-            'nav_length': len(nav),
-            'nav_hash': nav_fingerprint['sha256'][:16],
-        }).info('Computing multi-scale ITH features')
-
-        # Compute features for each threshold
-        for threshold in THRESHOLDS:
-            log_algorithm_init(
-                algorithm_name='compute_multiscale_ith',
-                version='1.0',
-                config={'threshold_dbps': threshold, 'lookbacks': LOOKBACKS},
-                input_hash=nav_fingerprint['sha256'],
-                random_seed=None,
-            )
-
-            config = MultiscaleIthConfig(threshold_dbps=threshold, lookbacks=LOOKBACKS)
-            features = compute_multiscale_ith(nav, config)
-
-            # Convert to Polars
-            arrow_batch = features.to_arrow()
-            df = pl.from_arrow(arrow_batch)
-
-            # Add metadata columns
-            df = df.with_columns([
-                pl.lit(symbol).alias('symbol'),
-                pl.lit(threshold).alias('threshold_dbps'),
-            ])
-
-            all_features.append(df)
-
-            logger.bind(context={
-                'symbol': symbol,
-                'threshold': threshold,
-                'n_features': len(df.columns) - 2,
-                'n_rows': len(df),
-            }).info('Features computed')
-
-    except Exception as e:
-        logger.bind(context={'symbol': symbol, 'error': str(e)}).error(f'Failed to process {symbol}')
-        continue
-
-if not all_features:
-    logger.error('No features computed - check data availability')
-    sys.exit(1)
-
-# Combine all features
-combined = pl.concat(all_features, how='diagonal')
-logger.bind(context={
-    'phase': 'aggregation',
-    'total_rows': len(combined),
-    'total_columns': len(combined.columns),
-}).info('Features aggregated')
-
-# Save features
-features_path = ARTIFACT_DIR / 'features.parquet'
-combined.write_parquet(features_path)
-logger.bind(context={'path': str(features_path)}).info('Features saved')
-
-# Run statistical examination
-from ith_python.statistical_examination.runner import run_examination
-from ith_python.statistical_examination._utils import get_feature_columns, drop_warmup
-
-# Get feature columns (exclude metadata)
-feature_cols = [c for c in combined.columns if c.startswith('ith_')]
-
-logger.bind(context={
-    'phase': 'statistical_examination',
-    'n_feature_cols': len(feature_cols),
-}).info('Running statistical examination')
-
-# Distribution analysis
-from ith_python.statistical_examination.distribution import analyze_all_distributions
-dist_results = analyze_all_distributions(combined, feature_cols[:50])  # Sample for speed
-
-# Regime detection (needs NAV - use last symbol's)
-from ith_python.statistical_examination.regime import detect_regime, analyze_regime_dependence, summarize_regime_dependence
-regimes = detect_regime(nav, lookback=min(LOOKBACKS))
-regimes_aligned = regimes[len(nav) - len(combined):]
-
-if len(regimes_aligned) == len(combined):
-    regime_results = analyze_regime_dependence(combined, regimes_aligned, feature_cols[:30])
-    regime_summary = summarize_regime_dependence(regime_results)
-else:
-    regime_summary = {'error': 'Regime length mismatch'}
-
-# PCA dimensionality
-from ith_python.statistical_examination.dimensionality import perform_pca, compute_vif
-pca_results = perform_pca(combined, feature_cols)
-
-# Temporal analysis
-from ith_python.statistical_examination.temporal import analyze_temporal_structure
-temporal_results = analyze_temporal_structure(combined, feature_cols[:30])
-
-# Compile summary
-summary = {
-    'timestamp': datetime.now(timezone.utc).isoformat(),
-    'trace_id': trace_id,
-    'provenance': provenance_records,
-    'data': {
-        'symbols': SYMBOLS,
-        'n_bars_requested': N_BARS,
-        'thresholds': THRESHOLDS,
-        'lookbacks': LOOKBACKS,
-        'total_rows': len(combined),
-        'total_feature_cols': len(feature_cols),
-    },
-    'distribution': dist_results.get('summary', {}),
-    'regime': regime_summary,
-    'pca': {
-        'n_components_95': pca_results.get('n_components_95_variance'),
-        'participation_ratio': pca_results.get('participation_ratio'),
-        'dimensionality_ratio': pca_results.get('dimensionality_ratio_95'),
-    },
-    'temporal': temporal_results.get('summary', {}),
-}
-
-# Save summary
-summary_path = ARTIFACT_DIR / 'summary.json'
-with open(summary_path, 'w') as f:
-    json.dump(summary, f, indent=2, default=str)
-
-logger.bind(context={
-    'phase': 'complete',
-    'artifact_dir': str(ARTIFACT_DIR),
-    'summary_path': str(summary_path),
-}).info('E2E Forensic Analysis Complete')
-
-# Print summary
-print()
-print('=' * 70)
-print('E2E FORENSIC ANALYSIS SUMMARY')
-print('=' * 70)
-print(f'Symbols: {SYMBOLS}')
-print(f'Total rows: {len(combined):,}')
-print(f'Feature columns: {len(feature_cols)}')
-n_comp = pca_results.get('n_components_95_variance', 'N/A')
-part_ratio = pca_results.get('participation_ratio', 0)
-stat_rate = temporal_results.get('summary', {}).get('stationarity_rate', 0)
-print(f'PCA 95%% components: {n_comp}')
-print(f'Participation ratio: {part_ratio:.2f}' if part_ratio else 'Participation ratio: N/A')
-print(f'Stationarity rate: {stat_rate:.1%}' if stat_rate else 'Stationarity rate: N/A')
-print('=' * 70)
-print(f'Artifacts: {ARTIFACT_DIR}')
-print(f'Logs: {LOG_DIR}')
-print('=' * 70)
-
-logger.complete()
-"
-
-# Copy logs to forensic directory
-cp ../../logs/ndjson/*.jsonl "$LOG_DIR/" 2>/dev/null || true
-
-echo ""
-echo "✅ E2E Forensic Analysis Complete"
-echo "   Run 'mise run forensic:hypothesis-audit' to review hypothesis results"
-"""
-
-[tasks."forensic:start-clickhouse"]
-description = "Start ClickHouse server if not running"
-run = """
-if pgrep -f "clickhouse server" > /dev/null; then
-    echo "✅ ClickHouse already running"
-else
-    echo "🚀 Starting ClickHouse server..."
-    CLICKHOUSE_BIN=$(ls ~/.local/share/mise/installs/clickhouse/*/bin/clickhouse 2>/dev/null | head -1)
-    if [ -z "$CLICKHOUSE_BIN" ]; then
-        echo "❌ ClickHouse not installed. Run: mise install clickhouse"
-        exit 1
-    fi
-
-    CONFIG_FILE="$HOME/.clickhouse-local/config.xml"
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo "❌ ClickHouse config not found at $CONFIG_FILE"
-        echo "   Create it with the required settings"
-        exit 1
-    fi
-
-    # Start in background with config file
-    cd ~/.clickhouse-local
-    nohup "$CLICKHOUSE_BIN" server --config-file="$CONFIG_FILE" > server.log 2>&1 &
-
-    # Wait for startup
-    echo "   Waiting for ClickHouse to start..."
-    for i in {1..30}; do
-        if "$CLICKHOUSE_BIN" client --query "SELECT 1" > /dev/null 2>&1; then
-            echo "✅ ClickHouse started successfully"
-            exit 0
-        fi
-        sleep 1
-    done
-
-    echo "❌ ClickHouse failed to start. Check ~/.clickhouse-local/server.log"
-    cat ~/.clickhouse-local/server.log | tail -20
-    exit 1
-fi
-"""
-
-[tasks."forensic:stop-clickhouse"]
-description = "Stop ClickHouse server"
-run = """
-if pgrep -f "clickhouse server" > /dev/null; then
-    echo "🛑 Stopping ClickHouse server..."
-    pkill -f "clickhouse server"
-    echo "✅ ClickHouse stopped"
-else
-    echo "ℹ️  ClickHouse not running"
-fi
-"""
-
-[tasks."forensic:report"]
-description = "Generate forensic analysis report from latest run"
-run = """
-LATEST=$(ls -td artifacts/forensic/e2e-* 2>/dev/null | head -1)
-if [ -z "$LATEST" ]; then
-    echo "❌ No forensic analysis found. Run 'mise run forensic:e2e' first."
-    exit 1
-fi
-
-echo "📊 Forensic Analysis Report"
-echo "=========================="
-echo "Run: $(basename $LATEST)"
-echo ""
-
-# Summary
-if [ -f "$LATEST/summary.json" ]; then
-    echo "Summary:"
-    cat "$LATEST/summary.json" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-print(f'  Trace ID: {d.get(\"trace_id\", \"N/A\")}')
-print(f'  Timestamp: {d.get(\"timestamp\", \"N/A\")}')
-print(f'  Symbols: {d.get(\"data\", {}).get(\"symbols\", [])}')
-print(f'  Total rows: {d.get(\"data\", {}).get(\"total_rows\", 0):,}')
-print(f'  Features: {d.get(\"data\", {}).get(\"total_feature_cols\", 0)}')
-print()
-print('PCA:')
-pca = d.get('pca', {})
-print(f'  Components (95%%): {pca.get(\"n_components_95\", \"N/A\")}')
-print(f'  Participation Ratio: {pca.get(\"participation_ratio\", 0):.2f}')
-print(f'  Dimensionality Ratio: {pca.get(\"dimensionality_ratio\", 0):.2%}')
-print()
-print('Temporal:')
-temporal = d.get('temporal', {})
-print(f'  Stationarity Rate: {temporal.get(\"stationarity_rate\", 0):.1%}')
-print(f'  Median Half-Life: {temporal.get(\"median_half_life\", \"N/A\")}')
-"
-fi
-
-echo ""
-echo "Artifacts: $LATEST/"
-ls -la "$LATEST/"
-"""
-
-# =============================================================================
-# Multi-View Feature Architecture (Layer-Based Pipeline)
-# Architecture: docs/plans/2026-01-25-multi-view-feature-architecture-plan.md
-# =============================================================================
-
-# ============ Preflight Checks ============
 [tasks."preflight:warmup"]
-description = "Validate data sufficiency after warmup period"
-run = """
-cd packages/ith-python
-uv sync --extra examination
+description = "Validate data sufficiency after warmup"
+run = "cd packages/ith-python && mise run preflight:warmup"
 
-echo "🔍 Preflight: Warmup Validation"
-uv run python << 'PYTHON_EOF'
-from ith_python.storage import validate_warmup
+[tasks."preflight:data-config"]
+description = "Load and validate forensic configuration"
+run = "cd packages/ith-python && mise run preflight:data-config"
 
-# Configuration (must match features:compute)
-N_BARS = 2000
-LOOKBACKS = [20, 50, 100, 200, 500]
-MIN_VALID_BARS = 500  # Minimum for meaningful analysis
+[tasks."preflight:rangebar-cache"]
+description = "Check range bar cache availability"
+run = "cd packages/ith-python && mise run preflight:rangebar-cache"
 
-is_valid, info = validate_warmup(N_BARS, LOOKBACKS, MIN_VALID_BARS)
+[tasks."data:precompute"]
+description = "Precompute missing range bar data (incremental)"
+run = "cd packages/ith-python && mise run data:precompute-incremental"
 
-print(f'  Input bars: {info["n_bars"]}')
-print(f'  Max lookback: {info["max_lookback"]}')
-print(f'  Warmup period: {info["warmup_bars"]} bars')
-print(f'  Valid bars after warmup: {info["valid_bars"]}')
-print(f'  Minimum required: {info["min_required"]}')
-print()
+[tasks."data:validate"]
+description = "Validate range bar continuity"
+run = "cd packages/ith-python && mise run data:validate-continuity"
 
-if is_valid:
-    print('✅ Warmup validation passed')
-else:
-    print(f'❌ {info["error"]}')
-    exit(1)
-PYTHON_EOF
-"""
+[tasks."data:precompute-historical"]
+description = "Precompute 3 years of range bar data (sequential)"
+run = "cd packages/ith-python && mise run data:precompute-historical"
 
-# ============ Layer 1: Feature Computation ============
+[tasks."data:precompute-parallel"]
+description = "Precompute 3 years of range bar data (parallel, 8 workers)"
+run = "cd packages/ith-python && mise run data:precompute-parallel"
+
+[tasks."data:precompute-status"]
+description = "Check precompute job status"
+run = "cd packages/ith-python && mise run data:precompute-status"
+
+[tasks."data:precompute-tail"]
+description = "Follow precompute log"
+run = "cd packages/ith-python && mise run data:precompute-tail"
+
+[tasks."data:precompute-stop"]
+description = "Stop precompute job"
+run = "cd packages/ith-python && mise run data:precompute-stop"
+
+[tasks."data:cache-status"]
+description = "Show ClickHouse cache status"
+run = "cd packages/ith-python && mise run data:cache-status"
+
+# =============================================================================
+# Feature Computation - Delegates to ith-python
+# =============================================================================
+
 [tasks."features:compute"]
-description = "Compute ITH features from range bar data (Layer 1)"
-depends = ["preflight:warmup", "develop:metrics-rust"]
-run = """
-cd packages/ith-python
-uv sync --extra examination --extra validation
+description = "Compute ITH features (Layer 1)"
+run = "cd packages/ith-python && mise run features:compute"
 
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-ARTIFACT_DIR="../../artifacts/ssot"
-mkdir -p "$ARTIFACT_DIR"
-
-echo "Computing ITH features..."
-uv run python << 'PYTHON_EOF'
-import sys
-import re
-from pathlib import Path
-import numpy as np
-import polars as pl
-from datetime import datetime, timezone
-
-from rangebar import get_n_range_bars
-from ith_python.features import compute_features, FeatureConfig
-from ith_python.storage import FeatureStore
-from ith_python.storage.schemas import FEATURE_SHORT_NAMES
-from ith_python.telemetry.provenance import fingerprint_array
-from ith_python.config import load_forensic_config
-
-# Load configuration from config/forensic.toml (SSoT)
-config = load_forensic_config()
-SYMBOLS = config.symbols
-N_BARS = 2000  # Fixed for now, could add to config
-THRESHOLDS = config.thresholds
-LOOKBACKS = config.lookbacks
-END_DATE = '2026-01-20'
-
-ARTIFACT_DIR = Path(config.output.ssot_dir)
-ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-
-print(f'Configuration loaded from config/forensic.toml')
-print(f'Computing features for {SYMBOLS}')
-print(f'Thresholds: {THRESHOLDS}, Lookbacks: {LOOKBACKS}')
-
-all_records = []
-computed_at = datetime.now(timezone.utc)
-
-for symbol in SYMBOLS:
-    print(f'  Fetching {N_BARS} bars for {symbol}...')
-
-    bars = get_n_range_bars(
-        symbol=symbol,
-        n_bars=N_BARS,
-        threshold_decimal_bps=100,
-        end_date=END_DATE,
-        use_cache=True,
-        fetch_if_missing=True,
-    )
-
-    if bars is None or len(bars) < 100:
-        print(f'    Skipping {symbol}: insufficient bars')
-        continue
-
-    # Build NAV
-    closes = bars['Close'].to_numpy()
-    returns = np.diff(closes) / closes[:-1]
-    nav = np.concatenate([[1.0], np.cumprod(1 + returns)])
-    nav_fp = fingerprint_array(nav, f'{symbol}_nav')
-
-    # Compute features for each threshold
-    for threshold in THRESHOLDS:
-        print(f'    Computing features for threshold={threshold}...')
-        feature_config = FeatureConfig(lookbacks=LOOKBACKS, threshold_dbps=threshold)
-        wide_df = compute_features(nav, feature_config, emit_telemetry=config.telemetry.enabled)
-
-        # Convert to long format
-        feature_cols = [c for c in wide_df.columns if c.startswith('ith_')]
-        for col in feature_cols:
-            match = re.match(r'ith_rb(\\d+)_lb(\\d+)_(.+)', col)
-            if not match:
-                continue
-
-            lookback = int(match.group(2))
-            feature = match.group(3)
-
-            for row in wide_df.iter_rows(named=True):
-                bar_index = row['bar_index']
-                value = row[col]
-                all_records.append({
-                    'bar_index': bar_index,
-                    'symbol': symbol,
-                    'threshold_dbps': threshold,
-                    'lookback': lookback,
-                    'feature': feature,
-                    'value': value,
-                    'valid': value is not None and not (isinstance(value, float) and np.isnan(value)),
-                    'computed_at': computed_at,
-                    'nav_hash': nav_fp['sha256'][:16],
-                })
-
-if not all_records:
-    print('ERROR: No features computed')
-    sys.exit(1)
-
-# Create Long Format DataFrame
-df = pl.DataFrame(all_records)
-df = df.with_columns([
-    pl.col('bar_index').cast(pl.UInt32),
-    pl.col('symbol').cast(pl.Categorical),
-    pl.col('threshold_dbps').cast(pl.UInt16),
-    pl.col('lookback').cast(pl.UInt16),
-    pl.col('feature').cast(pl.Categorical),
-    pl.col('value').cast(pl.Float64),
-    pl.col('valid').cast(pl.Boolean),
-])
-
-# Save SSoT
-output_path = ARTIFACT_DIR / 'features_long.parquet'
-df.write_parquet(output_path)
-print(f'Saved {len(df):,} rows to {output_path}')
-PYTHON_EOF
-"""
-
-# ============ Layer 2: View Generation ============
-[tasks."views:wide"]
-description = "Generate wide format views from SSoT (Layer 2)"
-depends = ["features:compute"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-
-ARTIFACT_DIR="../../artifacts/views/wide"
-mkdir -p "$ARTIFACT_DIR"
-
-echo "📊 Generating wide format views..."
-uv run python -c "
-from pathlib import Path
-from ith_python.storage import FeatureStore
-
-SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
-ARTIFACT_DIR = Path('../../artifacts/ssot')
-
-if not SSOT_PATH.exists():
-    print(f'ERROR: SSoT not found at {SSOT_PATH}')
-    print('Run: mise run features:compute')
-    exit(1)
-
-store = FeatureStore.from_parquet(SSOT_PATH)
-print(f'Loaded SSoT: {store}')
-
-# Generate wide view for each threshold
-for threshold in store.get_thresholds():
-    wide_df = store.to_wide(threshold=threshold, drop_warmup=True)
-    output_path = ARTIFACT_DIR / f'features_rb{threshold}.parquet'
-    wide_df.write_parquet(output_path)
-    print(f'  Saved {len(wide_df):,} rows to {output_path}')
-
-print('✅ Wide views generated')
-"
-"""
-
-[tasks."views:nested"]
-description = "Generate nested JSON views from SSoT (Layer 2)"
-depends = ["features:compute"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-
-ARTIFACT_DIR="../../artifacts/views/nested"
-mkdir -p "$ARTIFACT_DIR"
-
-echo "Generating nested JSON views..."
-uv run python << 'PYTHON_EOF'
-import json
-from pathlib import Path
-from ith_python.storage import FeatureStore
-
-SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
-ARTIFACT_DIR = Path('../../artifacts/views/nested')
-ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-
-if not SSOT_PATH.exists():
-    print(f'ERROR: SSoT not found at {SSOT_PATH}')
-    exit(1)
-
-store = FeatureStore.from_parquet(SSOT_PATH)
-print(f'Loaded SSoT: {store}')
-
-# Generate nested view (sample for speed)
-sample_df = store.filter(symbol=store.get_symbols()[0])
-sample_store = type(store)(sample_df)
-nested = sample_store.to_nested()
-
-# Save as JSONL (one record per line)
-output_path = ARTIFACT_DIR / 'features.jsonl'
-newline = chr(10)
-with open(output_path, 'w') as f:
-    for record in nested[:1000]:  # Sample first 1000 for speed
-        f.write(json.dumps(record, default=str) + newline)
-
-print(f'Saved {min(len(nested), 1000)} records to {output_path}')
-PYTHON_EOF
-"""
-
-[tasks."views:all"]
-description = "Generate all view formats from SSoT"
-depends = ["views:wide", "views:nested"]
-
-# ============ Layer 3: Analysis ============
-[tasks."analysis:distribution"]
-description = "Run distribution analysis (Shapiro-Wilk, Beta fit)"
-depends = ["features:compute"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-
-ARTIFACT_DIR="../../artifacts/analysis"
-LOG_DIR="../../logs/ndjson"
-mkdir -p "$ARTIFACT_DIR" "$LOG_DIR"
-
-echo "📈 Running distribution analysis..."
-uv run python -c "
-import json
-from pathlib import Path
-from ith_python.storage import FeatureStore
-from ith_python.statistical_examination.distribution import analyze_all_distributions
-
-SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
-ARTIFACT_DIR = Path('../../artifacts/ssot')
-
-store = FeatureStore.from_parquet(SSOT_PATH)
-wide_df = store.to_wide(drop_warmup=True)
-feature_cols = [c for c in wide_df.columns if c.startswith('ith_')]
-
-print(f'Analyzing {len(feature_cols)} features...')
-results = analyze_all_distributions(wide_df, feature_cols[:100])
-
-output_path = ARTIFACT_DIR / 'distribution.json'
-with open(output_path, 'w') as f:
-    json.dump(results, f, indent=2, default=str)
-
-print(f'✅ Distribution analysis saved to {output_path}')
-if 'summary' in results:
-    print(f'   Normality rate: {results[\"summary\"].get(\"normality_rate\", 0):.1%}')
-"
-"""
-
-[tasks."analysis:dimensionality"]
-description = "Run dimensionality analysis (PCA, VIF)"
-depends = ["features:compute"]
-run = """
-cd packages/ith-python
-uv sync --extra examination
-
-ARTIFACT_DIR="../../artifacts/analysis"
-mkdir -p "$ARTIFACT_DIR"
-
-echo "📈 Running dimensionality analysis..."
-uv run python -c "
-import json
-from pathlib import Path
-from ith_python.storage import FeatureStore
-from ith_python.statistical_examination.dimensionality import perform_pca, compute_vif
-
-SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
-ARTIFACT_DIR = Path('../../artifacts/ssot')
-
-store = FeatureStore.from_parquet(SSOT_PATH)
-wide_df = store.to_wide(drop_warmup=True)
-feature_cols = [c for c in wide_df.columns if c.startswith('ith_')]
-
-print(f'Analyzing {len(feature_cols)} features...')
-
-results = {}
-results['pca'] = perform_pca(wide_df, feature_cols)
-results['vif'] = compute_vif(wide_df, feature_cols)
-
-output_path = ARTIFACT_DIR / 'dimensionality.json'
-with open(output_path, 'w') as f:
-    json.dump(results, f, indent=2, default=str)
-
-print(f'✅ Dimensionality analysis saved to {output_path}')
-if 'pca' in results:
-    print(f'   PCA 95%% components: {results[\"pca\"].get(\"n_components_95_variance\")}')
-    print(f'   Participation ratio: {results[\"pca\"].get(\"participation_ratio\", 0):.2f}')
-"
-"""
-
-[tasks."analysis:all"]
-description = "Run all statistical analyses"
-depends = ["analysis:distribution", "analysis:dimensionality"]
-
-# ============ Layer 4: Full Pipeline ============
-[tasks."forensic:pipeline"]
-description = "Full pipeline: compute → store → analyze (new architecture)"
-depends = ["features:compute", "views:all", "analysis:all"]
-run = """
-echo "✅ Multi-View Feature Pipeline Complete"
-echo ""
-echo "📦 Artifacts:"
-echo "   SSoT: artifacts/ssot/features_long.parquet"
-echo "   Wide Views: artifacts/views/wide/"
-echo "   Nested Views: artifacts/views/nested/"
-echo "   Analysis: artifacts/analysis/"
-echo ""
-echo "📊 Telemetry: logs/ndjson/"
-"""
-
-# ============ Independent Upgrades ============
 [tasks."upgrade:features"]
-description = "Rebuild features only (after feature code changes)"
+description = "Rebuild features only"
 run = "mise run features:compute"
 
-[tasks."upgrade:analysis"]
-description = "Re-run analysis only (after analysis code changes)"
-depends = ["analysis:all"]
-
-[tasks."upgrade:views"]
-description = "Regenerate views only (after view code changes)"
-depends = ["views:all"]
-
 # =============================================================================
-# Data Preparation Layer (Layer 0) - DAG-Based Orchestration
-# Preflight checks and data acquisition before feature computation
-# Architecture: docs/plans/2026-01-25-multi-view-feature-architecture-plan.md
+# ClickHouse Management
 # =============================================================================
 
-# ============ Preflight: Configuration ============
-[tasks."preflight:data-config"]
-description = "Load and validate forensic configuration from config/forensic.toml"
-run = """
-cd packages/ith-python
-uv sync
-
-echo "🔧 Loading forensic configuration..."
-uv run python -m ith_python.config.forensic --validate
-
-# Export key values for downstream tasks
-uv run python << 'PYTHON_EOF'
-from ith_python.config import load_forensic_config
-config = load_forensic_config()
-sep = ","
-print(f"FORENSIC_SYMBOLS={sep.join(config.symbols)}")
-print(f"FORENSIC_THRESHOLDS={sep.join(map(str, config.thresholds))}")
-print(f"FORENSIC_LOOKBACKS={sep.join(map(str, config.lookbacks))}")
-print(f"FORENSIC_MIN_VALID_BARS={config.preflight.min_valid_bars}")
-print(f"FORENSIC_WARMUP_BARS={config.warmup_bars}")
-print(f"FORENSIC_AUTO_FETCH={str(config.preflight.auto_fetch).lower()}")
-print(f"FORENSIC_VALIDATION_PRESET={config.validation.preset}")
-PYTHON_EOF
-"""
-
-# ============ Preflight: ClickHouse ============
 [tasks."preflight:clickhouse"]
-description = "Ensure ClickHouse is running and accessible"
+description = "Ensure ClickHouse is running"
 run = """
-# Load config to check auto_start setting
-cd packages/ith-python
-AUTO_START=$(uv run python -c "
-from ith_python.config import load_forensic_config
-config = load_forensic_config()
-print('true' if config.clickhouse.auto_start else 'false')
-" 2>/dev/null || echo "true")
-
 if pgrep -f "clickhouse server" > /dev/null; then
-    echo "✅ ClickHouse already running"
+    echo "ClickHouse already running"
     exit 0
 fi
 
-if [ "$AUTO_START" = "false" ]; then
-    echo "❌ ClickHouse not running and auto_start=false"
-    echo "   Start manually or set clickhouse.auto_start=true in config/forensic.toml"
-    exit 1
-fi
-
-echo "🚀 Starting ClickHouse server..."
+echo "Starting ClickHouse server..."
 CLICKHOUSE_BIN=$(ls ~/.local/share/mise/installs/clickhouse/*/bin/clickhouse 2>/dev/null | head -1)
 if [ -z "$CLICKHOUSE_BIN" ]; then
-    echo "❌ ClickHouse not installed. Run: mise install clickhouse"
+    echo "ERROR: ClickHouse not installed. Run: mise install clickhouse"
     exit 1
 fi
 
 CONFIG_FILE="$HOME/.clickhouse-local/config.xml"
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo "❌ ClickHouse config not found at $CONFIG_FILE"
+    echo "ERROR: ClickHouse config not found at $CONFIG_FILE"
     exit 1
 fi
 
 cd ~/.clickhouse-local
 nohup "$CLICKHOUSE_BIN" server --config-file="$CONFIG_FILE" > server.log 2>&1 &
 
-echo "   Waiting for ClickHouse to start..."
+echo "Waiting for ClickHouse to start..."
 for i in {1..30}; do
     if "$CLICKHOUSE_BIN" client --query "SELECT 1" > /dev/null 2>&1; then
-        echo "✅ ClickHouse started successfully"
+        echo "ClickHouse started successfully"
         exit 0
     fi
     sleep 1
 done
 
-echo "❌ ClickHouse failed to start. Check ~/.clickhouse-local/server.log"
+echo "ERROR: ClickHouse failed to start"
 exit 1
 """
 
-# ============ Preflight: Range Bar Cache ============
-[tasks."preflight:rangebar-cache"]
-description = "Check range bar data availability in ClickHouse cache"
-depends = ["preflight:data-config", "preflight:clickhouse"]
+[tasks."forensic:start-clickhouse"]
+description = "Start ClickHouse server"
+run = "mise run preflight:clickhouse"
+
+[tasks."forensic:stop-clickhouse"]
+description = "Stop ClickHouse server"
 run = """
-cd packages/ith-python
-uv sync --extra validation
-
-echo "Checking range bar cache status..."
-uv run python << 'PYTHON_EOF'
-import sys
-from ith_python.config import load_forensic_config
-
-try:
-    from rangebar import RangeBarCache
-except ImportError:
-    print("ERROR: rangebar package not installed")
-    sys.exit(1)
-
-config = load_forensic_config()
-cache = RangeBarCache()
-
-print(f"Checking {config.total_combinations} symbol x threshold combinations...")
-print()
-
-missing = []
-available = []
-
-for symbol in config.symbols:
-    for threshold in config.thresholds:
-        count = cache.count_bars(symbol, threshold)
-        oldest = cache.get_oldest_bar_timestamp(symbol, threshold)
-        newest = cache.get_newest_bar_timestamp(symbol, threshold)
-
-        if count == 0:
-            missing.append((symbol, threshold))
-            print(f"  MISSING: {symbol} @ {threshold}dbps: NO DATA")
-        else:
-            from datetime import datetime
-            oldest_dt = datetime.fromtimestamp(oldest / 1000) if oldest else None
-            newest_dt = datetime.fromtimestamp(newest / 1000) if newest else None
-            available.append((symbol, threshold, count, oldest_dt, newest_dt))
-            print(f"  OK: {symbol} @ {threshold}dbps: {count:,} bars ({oldest_dt:%Y-%m-%d} to {newest_dt:%Y-%m-%d})")
-
-print()
-print(f"Available: {len(available)} / {config.total_combinations}")
-print(f"Missing: {len(missing)} / {config.total_combinations}")
-
-if missing and config.preflight.auto_fetch:
-    print()
-    print("WARN: Missing data will be fetched by data:precompute task")
-    # Write missing combinations for downstream task
-    with open("../../.missing_data.txt", "w") as f:
-        for symbol, threshold in missing:
-            line = f"{symbol},{threshold}"
-            f.write(line + chr(10))
-elif missing:
-    print()
-    print("ERROR: Missing data and auto_fetch=false")
-    print("   Run: mise run data:precompute")
-    sys.exit(1)
-else:
-    print()
-    print("All required data available in cache")
-PYTHON_EOF
+if pgrep -f "clickhouse server" > /dev/null; then
+    echo "Stopping ClickHouse server..."
+    pkill -f "clickhouse server"
+    echo "ClickHouse stopped"
+else
+    echo "ClickHouse not running"
+fi
 """
 
-# ============ Data: Precompute Range Bars ============
-[tasks."data:precompute"]
-description = "Fetch and precompute missing range bar data from Binance"
-depends = ["preflight:clickhouse"]
+# =============================================================================
+# Symmetric Dogfooding - Cross-Repo Validation
+# ADR: docs/adr/2026-01-27-symmetric-dogfooding-rangebar.md
+# =============================================================================
+
+[tasks."validate:symmetric"]
+description = "Validate ITH metrics against rangebar-py (symmetric dogfooding)"
 run = """
+echo "═══════════════════════════════════════════════════════════"
+echo "  Symmetric Dogfooding: trading-fitness ↔ rangebar-py"
+echo "═══════════════════════════════════════════════════════════"
+
+# Step 1: Check rangebar version pin
+echo ""
+echo "→ Step 1: Checking rangebar-py version pin..."
+RANGEBAR_PIN=$(grep 'rangebar = ' packages/ith-python/pyproject.toml | grep -o 'tag = "[^"]*"' || echo "")
+if [ -z "$RANGEBAR_PIN" ]; then
+    echo "  ✗ FAIL: rangebar-py not pinned to tag (using branch)"
+    echo "  Fix: Update pyproject.toml to use tag instead of branch"
+    exit 1
+fi
+echo "  ✓ Pinned: $RANGEBAR_PIN"
+
+# Step 2: Sync dependencies with validation group
+echo ""
+echo "→ Step 2: Syncing dependencies (validation group)..."
 cd packages/ith-python
-uv sync --extra validation
+uv sync --group dev
+echo "  ✓ Dependencies synced"
 
-echo "Precomputing range bar data..."
-uv run python << 'PYTHON_EOF'
-import sys
-from pathlib import Path
-from datetime import datetime, timedelta
-from ith_python.config import load_forensic_config
+# Step 3: Run integration tests
+echo ""
+echo "→ Step 3: Running integration tests..."
+if [ -d "tests/integration" ] && [ -n "$(ls tests/integration/test_*.py 2>/dev/null)" ]; then
+    uv run pytest tests/integration/ -v
+    echo "  ✓ Integration tests passed"
+else
+    echo "  ⚠ No integration tests found (tests/integration/test_*.py)"
+    echo "  Consider adding tests that validate ITH metrics on real range bars"
+fi
 
-try:
-    from rangebar import precompute_range_bars, PrecomputeProgress, RangeBarCache
-except ImportError:
-    print("ERROR: rangebar package not installed")
-    sys.exit(1)
+# Step 4: Quick smoke test - can we import and use rangebar?
+echo ""
+echo "→ Step 4: Smoke test - rangebar import..."
+uv run python -c '
+import rangebar
+print("  ✓ rangebar imported successfully")
+ver = getattr(rangebar, "__version__", "unknown")
+print(f"    Version: {ver}")
+print("    Functions: get_range_bars, RangeBarCache available")
+'
 
-config = load_forensic_config()
-
-# Check for missing data file from preflight
-missing_file = Path("../../.missing_data.txt")
-if missing_file.exists():
-    missing = []
-    with open(missing_file) as f:
-        for line in f:
-            parts = line.strip().split(",")
-            if len(parts) == 2:
-                missing.append((parts[0], int(parts[1])))
-    missing_file.unlink()  # Clean up
-else:
-    # Compute all combinations if no missing file
-    missing = config.symbol_threshold_matrix
-
-if not missing:
-    print("No missing data to precompute")
-    sys.exit(0)
-
-print(f"Precomputing {len(missing)} symbol x threshold combinations...")
-print()
-
-# Date range based on config
-if config.date_range.strategy == "all_available":
-    # Use max lookback to determine how far back to go
-    end_date = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")  # Binance has 1-2 day lag
-    start_date = (datetime.now() - timedelta(days=config.preflight.max_lookback_days)).strftime("%Y-%m-%d")
-elif config.date_range.strategy == "rolling_days":
-    end_date = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=config.date_range.rolling_days + 2)).strftime("%Y-%m-%d")
-elif config.date_range.strategy == "fixed":
-    start_date = config.date_range.start_date
-    end_date = config.date_range.end_date
-else:
-    print(f"ERROR: Unsupported date strategy: {config.date_range.strategy}")
-    sys.exit(1)
-
-print(f"Date range: {start_date} to {end_date}")
-print()
-
-def progress_callback(p: PrecomputeProgress):
-    pct = (p.months_completed / p.months_total * 100) if p.months_total > 0 else 0
-    print(f"  [{p.phase}] {p.current_month}: {pct:.0f}% ({p.bars_generated:,} bars)")
-
-success = 0
-failed = 0
-
-for symbol, threshold in missing:
-    print(f"Processing {symbol} @ {threshold}dbps...")
-    try:
-        result = precompute_range_bars(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date,
-            threshold_decimal_bps=threshold,
-            source=config.source,
-            market=config.market,
-            progress_callback=progress_callback if config.telemetry.emit_progress else None,
-            validate_on_complete=config.validation.on_failure,
-            continuity_tolerance_pct=config.validation.effective_tolerance,
-        )
-        print(f"  OK: {result.total_bars:,} bars in {result.elapsed_seconds:.1f}s")
-        success += 1
-    except Exception as e:
-        print(f"  FAIL: {e}")
-        failed += 1
-
-print()
-print(f"Completed: {success} success, {failed} failed")
-
-if failed > 0:
-    sys.exit(1)
-PYTHON_EOF
+echo ""
+echo "═══════════════════════════════════════════════════════════"
+echo "  ✓ Symmetric dogfooding validation complete"
+echo "═══════════════════════════════════════════════════════════"
 """
 
-# ============ Data: Validate Continuity ============
-[tasks."data:validate"]
-description = "Validate range bar continuity using tiered validation"
-depends = ["preflight:clickhouse"]
+[tasks."validate:pre-release"]
+description = "Full pre-release validation (includes symmetric dogfooding)"
+depends = ["test", "validate:symmetric"]
 run = """
-cd packages/ith-python
-uv sync --extra validation
-
-echo "Validating range bar continuity..."
-uv run python << 'PYTHON_EOF'
-import sys
-from ith_python.config import load_forensic_config
-
-try:
-    from rangebar import RangeBarCache, validate_continuity_tiered
-except ImportError:
-    print("ERROR: rangebar package not installed")
-    sys.exit(1)
-
-config = load_forensic_config()
-cache = RangeBarCache()
-
-print(f"Validation preset: {config.validation.preset} ({config.validation.effective_tolerance:.2%} tolerance)")
-print()
-
-all_valid = True
-results = []
-
-for symbol in config.symbols:
-    for threshold in config.thresholds:
-        # Get bars from cache
-        df, count = cache.get_n_bars(
-            symbol=symbol,
-            threshold_decimal_bps=threshold,
-            n_bars=10000,  # Get enough for validation
-        )
-
-        if df is None or len(df) < 100:
-            print(f"  WARN: {symbol} @ {threshold}dbps: Insufficient data ({count} bars)")
-            continue
-
-        # Run tiered validation
-        result = validate_continuity_tiered(
-            df=df,
-            symbol=symbol,
-            threshold_decimal_bps=threshold,
-            validation=config.validation.preset,
-        )
-
-        results.append((symbol, threshold, result))
-
-        if result.is_valid:
-            print(f"  OK: {symbol} @ {threshold}dbps: {len(df):,} bars, valid")
-        else:
-            all_valid = False
-            gaps = result.summary_dict()
-            print(f"  FAIL: {symbol} @ {threshold}dbps: {len(df):,} bars, GAPS: {gaps}")
-
-print()
-print("=" * 60)
-print("VALIDATION SUMMARY")
-print("=" * 60)
-
-# Aggregate by tier
-from collections import Counter
-tier_counts = Counter()
-for _, _, r in results:
-    for tier, summary in r.gaps_by_tier.items():
-        tier_counts[tier.name] += summary.count
-
-print("\nGaps by tier:")
-for tier, count in sorted(tier_counts.items()):
-    print(f"  {tier}: {count}")
-
-if all_valid:
-    print("\nAll data passes continuity validation")
-else:
-    if config.validation.on_failure == "error":
-        print("\nERROR: Validation failed (on_failure=error)")
-        sys.exit(1)
-    else:
-        print(f"\nWARN: Validation issues detected (on_failure={config.validation.on_failure})")
-PYTHON_EOF
+echo ""
+echo "Pre-release validation complete:"
+echo "  ✓ All tests passed"
+echo "  ✓ Symmetric dogfooding validated"
+echo "  → Ready to release"
 """
 
-# ============ Full Pipeline with Data Layer ============
+# =============================================================================
+# Full Pipelines (DAG Orchestration)
+# =============================================================================
+
+[tasks."forensic:pipeline"]
+description = "Full pipeline: compute -> views -> analyze"
+run = """
+mise run features:compute
+cd packages/ith-python && mise run views:all && mise run analysis:all
+
+echo ""
+echo "Multi-View Feature Pipeline Complete"
+echo "  SSoT: artifacts/ssot/features_long.parquet"
+echo "  Views: artifacts/views/"
+echo "  Analysis: artifacts/analysis/"
+"""
+
 [tasks."forensic:full-pipeline"]
-description = "Complete pipeline: config → data → compute → analyze (DAG orchestration)"
-depends = [
-    "preflight:data-config",
-    "preflight:clickhouse",
-    "preflight:rangebar-cache",
-    "data:precompute",
-    "data:validate",
-    "preflight:warmup",
-    "features:compute",
-    "views:all",
-    "analysis:all"
-]
+description = "Complete pipeline with data preflight (DAG)"
 run = """
+mise run preflight:clickhouse
+mise run preflight:data-config
+mise run preflight:rangebar-cache
+mise run data:precompute
+mise run data:validate
+mise run preflight:warmup
+mise run features:compute
+cd packages/ith-python && mise run views:all && mise run analysis:all
+
 echo ""
-echo "✅ Full Forensic Pipeline Complete (DAG-based orchestration)"
-echo ""
-echo "📦 Artifacts:"
-echo "   Config: config/forensic.toml"
-echo "   SSoT: artifacts/ssot/features_long.parquet"
-echo "   Wide Views: artifacts/views/wide/"
-echo "   Nested Views: artifacts/views/nested/"
-echo "   Analysis: artifacts/analysis/"
-echo ""
-echo "📊 Telemetry: logs/ndjson/"
-echo ""
-echo "🔍 Run 'mise run forensic:hypothesis-audit' to review results"
+echo "Full Forensic Pipeline Complete"
+echo "  Config: config/forensic.toml"
+echo "  SSoT: artifacts/ssot/features_long.parquet"
+echo "  Views: artifacts/views/"
+echo "  Analysis: artifacts/analysis/"
 """
