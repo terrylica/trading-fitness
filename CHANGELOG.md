@@ -1,3 +1,12 @@
+# [2.6.0](https://github.com/terrylica/trading-fitness/compare/v2.5.0...v2.6.0) (2026-01-27)
+
+
+### Features
+
+* **ith-python:** add walk-forward optimization module ([3a5465f](https://github.com/terrylica/trading-fitness/commit/3a5465ff334ab1fd13631a82e9773703922bed7a))
+* **ith-python:** expand mise tasks for forensic pipeline ([db25dd3](https://github.com/terrylica/trading-fitness/commit/db25dd3c65b07ec9b10f8ebdc98d952726929f98))
+* **scripts:** add range bar precompute scripts for bigblack ([bf2aaa0](https://github.com/terrylica/trading-fitness/commit/bf2aaa024737d923ba69debf0842a0640bad0aca))
+
 # [2.5.0](https://github.com/terrylica/trading-fitness/compare/v2.4.0...v2.5.0) (2026-01-27)
 
 
