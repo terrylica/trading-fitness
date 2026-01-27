@@ -52,6 +52,6 @@ build-backend = "hatchling.build"
 packages = ["src/ith_python"]
 
 [tool.uv.sources]
-rangebar = { git = "https://github.com/terrylica/rangebar-py", tag = "v10.1.0" }  # SSoT-OK
+rangebar = { git = "https://github.com/terrylica/rangebar-py", tag = "v11.0.0" }  # SSoT-OK
 trading-fitness-metrics = { path = "../metrics-rust" }
 claspy = { path = "../../../../fork-tools/claspy" }
