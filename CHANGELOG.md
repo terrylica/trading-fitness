@@ -1,3 +1,14 @@
+# [2.5.0](https://github.com/terrylica/trading-fitness/compare/v2.4.0...v2.5.0) (2026-01-27)
+
+
+### Features
+
+* **data-layer:** add DAG-based data preparation pipeline ([20a4070](https://github.com/terrylica/trading-fitness/commit/20a4070b94f043ab78a89b43b5955ffe5bc214c5))
+* **ith-python:** add ClaSPy feature extraction for regime detection ([7f00a82](https://github.com/terrylica/trading-fitness/commit/7f00a82732662b41c4b4e426064be84bd8a2475b))
+* **ith-python:** add telemetry module for scientific reproducibility ([7cea57f](https://github.com/terrylica/trading-fitness/commit/7cea57f822662e4a6622166b16ad6e02a9ea026f))
+* **ith-python:** implement multi-view feature architecture ([51c8eda](https://github.com/terrylica/trading-fitness/commit/51c8edaa0863de00185836acf137672ed38c6ebc))
+* **validation:** add symmetric dogfooding with rangebar-py ([e4d1879](https://github.com/terrylica/trading-fitness/commit/e4d1879f28e86ebe775bd9dac00e245656333530))
+
 # [2.4.0](https://github.com/terrylica/trading-fitness/compare/v2.3.0...v2.4.0) (2026-01-25)
 
 
