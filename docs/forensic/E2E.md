@@ -299,3 +299,13 @@ The regime detection uses a lookback window that may not align with the feature 
 - [CLAUDE.md](../../CLAUDE.md) - Project overview
 - [ITH.md](../ITH.md) - Core methodology
 - [statistical_examination/CLAUDE.md](../../packages/ith-python/src/ith_python/statistical_examination/CLAUDE.md) - ML readiness analysis
+
+---
+
+## Forensic Audit Reports
+
+| Report                                                               | Date       | Focus                                     |
+| -------------------------------------------------------------------- | ---------- | ----------------------------------------- |
+| [COMPREHENSIVE_AUDIT_20260125.md](./COMPREHENSIVE_AUDIT_20260125.md) | 2026-01-25 | Full artifact and telemetry inventory     |
+| [SYMMETRIC_AUDIT_20260125.md](./SYMMETRIC_AUDIT_20260125.md)         | 2026-01-25 | Symmetric feature selection (24 features) |
+| [ANALYSIS_REPORT_20260125.md](./ANALYSIS_REPORT_20260125.md)         | 2026-01-25 | Initial analysis with pipeline fixes      |

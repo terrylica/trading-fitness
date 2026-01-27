@@ -9,9 +9,60 @@
 | Full pipeline (new)   | `mise run forensic:full-pipeline`   |
 | Legacy E2E pipeline   | `mise run forensic:pipeline`        |
 | Data preflight        | `mise run preflight:rangebar-cache` |
-| Precompute range bars | `mise run data:precompute`          |
-| Validate data         | `mise run data:validate`            |
+| Precompute range bars | `mise run data:precompute-parallel` |
+| Check data status     | `mise run data:cache-status`        |
 | Run tests             | `mise run test`                     |
+| **Pre-release check** | `mise run validate:pre-release`     |
+| Symmetric dogfooding  | `mise run validate:symmetric`       |
+
+---
+
+## Data Infrastructure (CRITICAL)
+
+**Bigblack is the sole data storage.** Local machines should NOT cache range bar data.
+
+### Architecture
+
+```
+┌─────────────────────┐         ┌─────────────────────────────────────┐
+│   Local (macOS)     │         │   Bigblack (Linux GPU Workstation)  │
+│                     │  SSH    │                                     │
+│  Code + Analysis    │ ──────▶ │  ClickHouse: rangebar_cache.range_bars
+│  (no data caching)  │         │  Tick Cache: ~/.cache/rangebar/ticks/
+└─────────────────────┘         └─────────────────────────────────────┘
+```
+
+| Component     | Location                      | Purpose                       |
+| ------------- | ----------------------------- | ----------------------------- |
+| ClickHouse DB | `bigblack:rangebar_cache`     | Range bar storage (86M+ bars) |
+| Tick Cache    | `bigblack:~/.cache/rangebar/` | Parquet tick files (Binance)  |
+| Code + Config | Local + `bigblack:~/eon/`     | Synced via rsync              |
+
+### Data Commands
+
+```bash
+# Check bigblack data status
+ssh bigblack "clickhouse-client --query 'SELECT symbol, threshold_decimal_bps, count() FROM rangebar_cache.range_bars GROUP BY 1,2 ORDER BY 1,2'"
+
+# Run precompute on bigblack (parallel, 8 workers)
+ssh bigblack "cd ~/eon/trading-fitness/packages/ith-python && ~/.local/bin/uv run python ../../scripts/precompute_historical_parallel.py --workers 8"
+
+# Sync code to bigblack (excludes data/cache)
+rsync -avz --exclude='.venv' --exclude='artifacts' --exclude='logs' --exclude='.git' . bigblack:~/eon/trading-fitness/
+```
+
+### Data Coverage (as of 2026-01-26)
+
+| Symbol  | Thresholds (dbps) | Coverage  | Bars  |
+| ------- | ----------------- | --------- | ----- |
+| BTCUSDT | 50, 100           | 4.1 years | 6.4M  |
+| ETHUSDT | 25                | 4.1 years | 16.6M |
+| SOLUSDT | 25, 250           | 4.1 years | 35.8M |
+| BNBUSDT | 50, 250           | 4.1 years | 4.9M  |
+
+**Reference**: [docs/infrastructure/DATA.md](docs/infrastructure/DATA.md)
+
+---
 
 ## Package Map
 
@@ -27,6 +78,7 @@
 
 | Topic               | Location                                                                                                                       | Purpose                                  |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| Data Infrastructure | [docs/infrastructure/DATA.md](docs/infrastructure/DATA.md)                                                                     | Bigblack storage architecture (SSoT)     |
 | Forensic Config     | [config/forensic.toml](config/forensic.toml)                                                                                   | Data pipeline configuration (SSoT)       |
 | ITH Methodology     | [docs/ITH.md](docs/ITH.md)                                                                                                     | Core algorithm and fitness criteria      |
 | Feature Registry    | [docs/features/REGISTRY.md](docs/features/REGISTRY.md)                                                                         | All extractable features (SSoT)          |
@@ -155,58 +207,51 @@ mise run forensic:hypothesis-audit # Audit hypothesis test results
 
 ## mise: DAG-Based Task Orchestration
 
-Uses [jdx/mise](https://mise.jdx.dev/) with **DAG-based task orchestration** (Directed Acyclic Graph).
+Uses [jdx/mise](https://mise.jdx.dev/) with **DAG-based task orchestration**.
 
-### Orchestration Model
+### Task Graph Patterns
 
-- **Task Graph**: Tasks are nodes, `depends` defines directed edges
-- **Topological Execution**: Tasks execute in dependency order via topological sort
-- **Parallel by Default**: Independent tasks (no dependency path) run concurrently
+| Pattern     | Example                               | Use Case           |
+| ----------- | ------------------------------------- | ------------------ |
+| Sequential  | `depends = ["lint", "test"]`          | Pipeline stages    |
+| Parallel    | `depends = ["test:unit", "test:e2e"]` | Independent checks |
+| Conditional | `run = "if [ -f x ]; then ...`        | Optional steps     |
 
-### Configuration Hierarchy
+### Environment Hierarchy
 
-| Level   | File                   | Purpose                                 |
-| ------- | ---------------------- | --------------------------------------- |
-| Root    | `mise.toml`            | `[tools]` + `[env]` + orchestration     |
-| Package | `packages/*/mise.toml` | Domain-specific execution tasks         |
-| Local   | `.mise.local.toml`     | Secrets, overrides (gitignored)         |
-| Profile | `mise.{env}.toml`      | Environment-specific (dev/staging/prod) |
-
-### DAG Execution Features
-
-- **Incremental**: Define `sources`/`outputs` to skip unchanged tasks (like Make)
-- **Parallel**: Tasks in `depends` array with no mutual dependencies run concurrently
-- **Caching**: Output-based caching skips re-execution (similar to Turborepo/Nx)
-- **Watch Mode**: `mise watch <task>` with `sources` for live reload
-
-### Task Dependency Patterns
-
-```toml
-# Sequential: A → B → C
-[tasks."features:compute"]
-depends = ["preflight:warmup", "develop:metrics-rust"]  # Antecedents
-
-# Fan-in: (A, B, C) → D
-[tasks."views:all"]
-depends = ["views:wide", "views:nested"]
-
-# Fan-out: A → (B, C, D)
-# B, C, D all have depends = ["A"]
+```
+mise.toml          # Hub: [tools] + [env] + orchestration tasks
+.mise.local.toml   # Secrets (gitignored): GH_TOKEN, API keys
+packages/*/mise.toml  # Spoke: domain-specific execution tasks
 ```
 
-| Pattern    | Description    | Example                    |
-| ---------- | -------------- | -------------------------- |
-| Sequential | A → B → C      | Preflight → Compute → View |
-| Fan-out    | A → (B, C, D)  | Compute → (Wide, Nested)   |
-| Fan-in     | (A, B, C) → D  | (Dist, Dim) → Analysis:all |
-| Diamond    | A → (B, C) → D | Classic DAG convergence    |
+### Secrets Isolation (CRITICAL)
 
-### Other Configuration
+**Never commit credentials to `mise.toml`** - use `.mise.local.toml`:
+
+```toml
+# .mise.local.toml (gitignored)
+[env]
+GH_TOKEN = "{{ read_file(path=env.HOME ~ '/.claude/.secrets/gh-token-terrylica') | trim }}"
+GITHUB_TOKEN = "{{ env.GH_TOKEN }}"
+```
+
+### Key Patterns
+
+- **Incremental**: `sources`/`outputs` arrays skip unchanged tasks
+- **Watch mode**: `mise watch <task>` with `sources` for live reload
+- **Profiles**: `mise.{env}.toml` for dev/staging/prod configs
+- **Hooks**: `[hooks.enter]` for directory-activated setup
+
+### Configuration Files
 
 | File           | Purpose                                   |
 | -------------- | ----------------------------------------- |
+| `mise.toml`    | Root orchestration + delegation           |
 | `.mcp.json`    | MCP servers (mise, code-search, ast-grep) |
 | `sgconfig.yml` | ast-grep rules configuration              |
+
+**Reference**: [mise Tasks](https://mise.jdx.dev/tasks/) | [mise Configuration](https://mise.jdx.dev/configuration.html)
 
 ---
 
