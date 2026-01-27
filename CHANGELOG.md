@@ -1,3 +1,30 @@
+# [3.0.0](https://github.com/terrylica/trading-fitness/compare/v2.6.0...v3.0.0) (2026-01-27)
+
+
+### Bug Fixes
+
+* **deps:** add pandera to dev group for test collection ([866c943](https://github.com/terrylica/trading-fitness/commit/866c943a4a0362e6881ad9ddf0e44c1f71e7a22d))
+
+
+### Features
+
+* **deps:** upgrade rangebar-py to v11.0.0 with Ouroboros support ([7eba53b](https://github.com/terrylica/trading-fitness/commit/7eba53b560bf77c5f312a6cf0d24d54697a82498))
+* **mise:** add preflight:test-collection to catch missing dev deps ([f6dff72](https://github.com/terrylica/trading-fitness/commit/f6dff7278a800773d931c5c637fbdae98e970246))
+
+
+### BREAKING CHANGES
+
+* **deps:** get_range_bars() now has ouroboros parameter (default: "year").
+Existing code works unchanged with yearly reset boundaries.
+
+Note: Existing cached range bars on bigblack will need reconstruction once
+Ouroboros is enabled for production use.
+
+ADR: docs/adr/2026-01-27-symmetric-dogfooding-rangebar.md
+
+SRED-Type: support-work
+SRED-Claim: TRADING-FITNESS
+
 # [2.6.0](https://github.com/terrylica/trading-fitness/compare/v2.5.0...v2.6.0) (2026-01-27)
 
 
