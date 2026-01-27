@@ -49,3 +49,9 @@ packages/ith-python/results.html
 # Vale linter (local config)
 .vale.ini
 .vale/
+
+# Runtime artifacts (precompute jobs)
+.missing_data.txt
+.precompute_log
+.precompute_pid
+.python-version
