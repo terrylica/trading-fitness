@@ -1,41 +1,73 @@
 # ith-python package - mise configuration
-# Inherits from root mise.toml, adds package-specific tasks
+# Primary Python package for ITH (Investment Time Horizon) fitness analysis
+# Inherits from root mise.toml
 
 [env]
 # Package-specific environment (inherits GH_TOKEN, LOG_DIR from root)
 ITH_OUTPUT_DIR = "{{config_root}}/../../artifacts"
+ARTIFACT_DIR = "{{config_root}}/../../artifacts"
 
 # =============================================================================
-# ITH Analysis Tasks (Package-Specific)
+# Core ITH Analysis Tasks
 # =============================================================================
 
 [tasks.run]
 description = "Run Bull ITH analysis (default)"
-run = "unset UV_PYTHON && uv run python -m ith_python.ith"
+run = "uv run python -m ith_python.ith"
 
 [tasks."run:bull"]
 description = "Run Bull (long) ITH analysis"
-run = "unset UV_PYTHON && uv run python -m ith_python.ith"
+run = "uv run python -m ith_python.ith"
 
 [tasks."run:bear"]
 description = "Run Bear (short) ITH analysis"
-run = "unset UV_PYTHON && uv run python -m ith_python.bear_ith"
+run = "uv run python -m ith_python.bear_ith"
 
 [tasks."run:both"]
 description = "Run Bull then Bear ITH analysis sequentially"
 depends = ["run:bull", "run:bear"]
 
+# =============================================================================
+# Development Tasks
+# =============================================================================
+
 [tasks.test]
 description = "Run ith-python tests"
-run = "unset UV_PYTHON && uv run pytest"
+run = "uv run pytest"
+
+[tasks."test:walk-forward"]
+description = "Test walk-forward analysis module"
+run = "uv run pytest tests/test_walk_forward.py -v"
+
+[tasks."test:statistical-examination"]
+description = "Test statistical examination framework"
+run = """
+uv sync --extra examination
+uv run pytest tests/test_statistical_examination/ -v
+"""
+
+[tasks."test:rangebar-validation"]
+description = "Validate ITH features against rangebar data"
+run = """
+uv sync --extra validation
+uv run pytest tests/test_rangebar_integration.py -v
+"""
+
+[tasks."test:multiscale-ith"]
+description = "Test multi-scale ITH feature computation"
+run = "uv run pytest tests/test_multiscale_ith.py -v"
 
 [tasks.lint]
 description = "Lint ith-python with ruff"
-run = "unset UV_PYTHON && uv run ruff check --fix"
+run = "uv run ruff check --fix"
 
 [tasks.sync]
 description = "Sync dependencies"
-run = "unset UV_PYTHON && uv sync"
+run = "uv sync"
+
+[tasks."sync:all"]
+description = "Sync all optional dependencies"
+run = "uv sync --extra examination --extra validation"
 
 # =============================================================================
 # Fresh Generation (Clear Artifacts First)
@@ -44,27 +76,1037 @@ run = "unset UV_PYTHON && uv sync"
 [tasks."fresh:bull"]
 description = "Fresh Bull ITH - clear artifacts and generate 100 new"
 run = """
-echo "🗑️  Clearing bull artifacts..."
+echo "Clearing bull artifacts..."
 rm -rf ../../artifacts/synth_bull_ithes/nav_data_synthetic/*.csv
 rm -rf ../../artifacts/synth_bull_ithes/*.html
 rm -rf ../../artifacts/synth_bull_ithes/*.csv
 rm -f ../../artifacts/bull_results.html
-echo "✅ Bull artifacts cleared"
-unset UV_PYTHON && uv run python -m ith_python.ith
+echo "Bull artifacts cleared"
+uv run python -m ith_python.ith
 """
 
 [tasks."fresh:bear"]
 description = "Fresh Bear ITH - clear artifacts and generate 100 new"
 run = """
-echo "🗑️  Clearing bear artifacts..."
+echo "Clearing bear artifacts..."
 rm -rf ../../artifacts/synth_bear_ithes/nav_data_synthetic/*.csv
 rm -rf ../../artifacts/synth_bear_ithes/*.html
 rm -rf ../../artifacts/synth_bear_ithes/*.csv
 rm -f ../../artifacts/bear_results.html
-echo "✅ Bear artifacts cleared"
-unset UV_PYTHON && uv run python -m ith_python.bear_ith
+echo "Bear artifacts cleared"
+uv run python -m ith_python.bear_ith
 """
 
 [tasks."fresh:both"]
 description = "Fresh Bull + Bear ITH - clear all and generate 100 each"
 depends = ["fresh:bull", "fresh:bear"]
+
+# =============================================================================
+# Data Precomputation (Background Jobs via rangebar-py)
+# =============================================================================
+
+[tasks."data:precompute-historical"]
+description = "Precompute 3 years of range bar data (sequential, background)"
+run = """
+LOG_FILE="../../logs/precompute_$(date +%Y%m%d_%H%M%S).log"
+mkdir -p ../../logs
+
+echo "Starting historical data precomputation (sequential)..."
+echo "Log file: $LOG_FILE"
+echo ""
+
+nohup uv run python ../../scripts/precompute_historical_data.py > "$LOG_FILE" 2>&1 &
+PID=$!
+
+echo "Background job started"
+echo "  PID: $PID"
+echo "  Log: $LOG_FILE"
+echo ""
+echo "Monitor with:"
+echo "  mise run data:precompute-status"
+echo "  mise run data:precompute-tail"
+echo ""
+echo "$PID" > "../../.precompute_pid"
+echo "$LOG_FILE" > "../../.precompute_log"
+"""
+
+[tasks."data:precompute-parallel"]
+description = "Precompute 3 years of range bar data (parallel, 8 workers)"
+run = """
+LOG_FILE="../../logs/precompute_parallel_$(date +%Y%m%d_%H%M%S).log"
+mkdir -p ../../logs
+
+WORKERS=${WORKERS:-8}
+
+echo "Starting PARALLEL historical data precomputation..."
+echo "  Workers: $WORKERS"
+echo "  Log file: $LOG_FILE"
+echo ""
+
+nohup uv run python ../../scripts/precompute_historical_parallel.py --workers "$WORKERS" > "$LOG_FILE" 2>&1 &
+PID=$!
+
+echo "Background job started"
+echo "  PID: $PID"
+echo "  Log: $LOG_FILE"
+echo ""
+echo "Monitor with:"
+echo "  mise run data:precompute-status"
+echo "  mise run data:precompute-tail"
+echo ""
+echo "$PID" > "../../.precompute_pid"
+echo "$LOG_FILE" > "../../.precompute_log"
+"""
+
+[tasks."data:precompute-status"]
+description = "Check status of background precompute job"
+run = """
+echo "═══════════════════════════════════════════════════════════════════════════════"
+echo "PRECOMPUTE JOB STATUS"
+echo "═══════════════════════════════════════════════════════════════════════════════"
+echo ""
+
+PID_FILE="../../.precompute_pid"
+LOG_REF="../../.precompute_log"
+
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat "$PID_FILE")
+    LOG_FILE=$(cat "$LOG_REF" 2>/dev/null || echo "unknown")
+
+    if ps -p "$PID" > /dev/null 2>&1; then
+        CPU=$(ps -p "$PID" -o %cpu= 2>/dev/null | tr -d ' ')
+        MEM=$(ps -p "$PID" -o %mem= 2>/dev/null | tr -d ' ')
+        RSS=$(ps -p "$PID" -o rss= 2>/dev/null | awk '{printf "%.1f GB", $1/1024/1024}')
+        ELAPSED=$(ps -p "$PID" -o etime= 2>/dev/null | tr -d ' ')
+
+        echo "Status: RUNNING"
+        echo "  PID: $PID"
+        echo "  CPU: ${CPU}%"
+        echo "  Memory: $RSS (${MEM}%)"
+        echo "  Elapsed: $ELAPSED"
+        echo "  Log: $LOG_FILE"
+        echo ""
+        echo "Recent Progress:"
+        echo "───────────────────────────────────────────────────────────────────────────────"
+        grep -v "^DEBUG" "$LOG_FILE" 2>/dev/null | tail -15 || echo "  (waiting for output...)"
+        echo ""
+    else
+        echo "Status: COMPLETED (or stopped)"
+        echo "  PID: $PID (no longer running)"
+        echo "  Log: $LOG_FILE"
+        echo ""
+        if [ -f "$LOG_FILE" ]; then
+            echo "Final Summary:"
+            echo "───────────────────────────────────────────────────────────────────────────────"
+            grep -v "^DEBUG" "$LOG_FILE" | grep -E "(SUMMARY|Symbol|SUCCESS|FAILED|Total|═)" | tail -20
+        fi
+        rm -f "$PID_FILE" "$LOG_REF"
+    fi
+else
+    echo "Status: NO JOB RUNNING"
+    echo ""
+    echo "Start a new precompute job with:"
+    echo "  mise run data:precompute-historical"
+fi
+
+echo ""
+echo "═══════════════════════════════════════════════════════════════════════════════"
+"""
+
+[tasks."data:precompute-tail"]
+description = "Follow precompute log output in real-time"
+run = """
+LOG_REF="../../.precompute_log"
+if [ -f "$LOG_REF" ]; then
+    LOG_FILE=$(cat "$LOG_REF")
+    echo "Following: $LOG_FILE"
+    echo "Press Ctrl+C to stop"
+    echo ""
+    tail -f "$LOG_FILE" | grep -v "^DEBUG"
+else
+    echo "No active precompute job found"
+    echo "Start one with: mise run data:precompute-historical"
+fi
+"""
+
+[tasks."data:precompute-stop"]
+description = "Stop running precompute job"
+run = """
+PID_FILE="../../.precompute_pid"
+LOG_REF="../../.precompute_log"
+
+if [ -f "$PID_FILE" ]; then
+    PID=$(cat "$PID_FILE")
+    if ps -p "$PID" > /dev/null 2>&1; then
+        echo "Stopping precompute job (PID: $PID)..."
+        kill "$PID"
+        sleep 2
+        if ps -p "$PID" > /dev/null 2>&1; then
+            echo "Force killing..."
+            kill -9 "$PID"
+        fi
+        echo "Job stopped"
+    else
+        echo "Job already stopped"
+    fi
+    rm -f "$PID_FILE" "$LOG_REF"
+else
+    echo "No active precompute job found"
+fi
+"""
+
+[tasks."data:cache-status"]
+description = "Show range bar cache status in ClickHouse"
+run = """
+uv run python << 'PYTHON_EOF'
+from rangebar import RangeBarCache
+from datetime import datetime
+
+cache = RangeBarCache()
+symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']
+thresholds = [25, 50, 100, 250]
+
+print("═" * 80)
+print("CLICKHOUSE RANGE BAR CACHE STATUS")
+print("═" * 80)
+print()
+print(f"{'Symbol':<10} {'Threshold':>10} {'Bars':>12} {'Start Date':>12} {'End Date':>12} {'Years':>8}")
+print("─" * 80)
+
+total_bars = 0
+for symbol in symbols:
+    for threshold in thresholds:
+        count = cache.count_bars(symbol, threshold)
+        if count > 0:
+            total_bars += count
+            oldest = cache.get_oldest_bar_timestamp(symbol, threshold)
+            newest = cache.get_newest_bar_timestamp(symbol, threshold)
+            oldest_dt = datetime.fromtimestamp(oldest / 1000) if oldest else None
+            newest_dt = datetime.fromtimestamp(newest / 1000) if newest else None
+            years = (newest_dt - oldest_dt).days / 365.25 if oldest_dt and newest_dt else 0
+            print(f"{symbol:<10} {threshold:>10}dbps {count:>12,} {oldest_dt:%Y-%m-%d} {newest_dt:%Y-%m-%d} {years:>7.1f}y")
+        else:
+            print(f"{symbol:<10} {threshold:>10}dbps {'NO DATA':>12}")
+
+print("─" * 80)
+print(f"Total bars in cache: {total_bars:,}")
+print("═" * 80)
+PYTHON_EOF
+"""
+
+# =============================================================================
+# Statistical Examination Tasks
+# =============================================================================
+
+[tasks."examine:ith-features"]
+description = "Run full statistical examination of ITH features"
+run = """
+uv sync --extra examination
+uv run python -m ith_python.statistical_examination.runner \
+    --thresholds 25,50,100,250,500,1000 \
+    --output-dir ../../artifacts/statistical_examination
+"""
+
+[tasks."examine:cross-scale"]
+description = "Cross-scale correlation analysis only"
+run = """
+uv sync --extra examination
+uv run python -c "
+from ith_python.statistical_examination.cross_scale import main
+main()
+"
+"""
+
+[tasks."examine:from-parquet"]
+description = "Run examination on pre-computed features Parquet"
+run = """
+uv sync --extra examination
+uv run python -m ith_python.statistical_examination.runner \
+    --parquet ../../artifacts/statistical_examination/features.parquet \
+    --output-dir ../../artifacts/statistical_examination
+"""
+
+# =============================================================================
+# Forensic Analysis Tasks
+# =============================================================================
+
+[tasks."forensic:full"]
+description = "Full forensic analysis with comprehensive NDJSON telemetry"
+run = """
+uv sync --extra examination
+
+echo "Starting forensic analysis pipeline..."
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+LOG_DIR="../../logs/forensic/$TIMESTAMP"
+mkdir -p "$LOG_DIR"
+
+uv run python -m ith_python.statistical_examination.runner \
+    --thresholds 25,50,100,250,500,1000 \
+    --lookbacks 20,50,100,200,500,1000,1500,2000,3000,4000,5000,6000 \
+    --output-dir "../../artifacts/statistical_examination" \
+    --verbose
+
+cp ../../artifacts/statistical_examination/examination.ndjson "$LOG_DIR/" 2>/dev/null || true
+
+echo "Forensic analysis complete"
+echo "   Artifacts: artifacts/statistical_examination/"
+echo "   Logs: $LOG_DIR/"
+"""
+
+[tasks."forensic:prepare-logs"]
+description = "Prepare log directories for forensic analysis"
+run = """
+mkdir -p ../../logs/forensic
+mkdir -p ../../logs/ndjson
+echo "Log directories prepared"
+"""
+
+[tasks."forensic:hypothesis-audit"]
+description = "Audit all hypothesis test results from NDJSON logs"
+run = """
+echo "Auditing hypothesis test results..."
+
+find ../../logs -name "*.jsonl" -exec grep -h '"event_type":"hypothesis_result"' {} \\; 2>/dev/null | \
+    python3 -c "
+import sys
+import json
+from collections import Counter
+
+decisions = Counter()
+tests = Counter()
+
+for line in sys.stdin:
+    try:
+        event = json.loads(line)
+        ctx = event.get('context', {})
+        decisions[ctx.get('decision', 'unknown')] += 1
+        tests[ctx.get('test_name', 'unknown')] += 1
+    except:
+        pass
+
+print('\nHypothesis Test Audit')
+print('=' * 50)
+print('\nBy Test Type:')
+for test, count in tests.most_common():
+    print(f'  {test}: {count}')
+print('\nBy Decision:')
+for decision, count in decisions.most_common():
+    print(f'  {decision}: {count}')
+"
+"""
+
+[tasks."forensic:claspy-analysis"]
+description = "Run ClaSPy regime change detection with telemetry"
+run = """
+uv sync --extra examination
+
+echo "Running ClaSPy regime change detection..."
+uv run python -c "
+from pathlib import Path
+import numpy as np
+from ith_python.claspy_features import extract_claspy_features_safe
+from ith_python.ndjson_logger import setup_ndjson_logger
+
+logger = setup_ndjson_logger('claspy_analysis')
+
+np.random.seed(42)
+returns = np.random.randn(5000) * 0.01
+nav = np.cumprod(1 + returns)
+nav = nav / nav[0]
+
+logger.bind(context={'nav_length': len(nav), 'phase': 'start'}).info('Starting ClaSPy analysis')
+
+features = extract_claspy_features_safe(nav)
+if features:
+    logger.bind(context={
+        'phase': 'complete',
+        'n_changepoints': features.n_changepoints,
+        'n_segments': features.n_segments,
+        'cp_density': features.cp_density,
+    }).info('ClaSPy analysis complete')
+    print(f'Detected {features.n_changepoints} change points in {features.n_segments} segments')
+else:
+    logger.bind(context={'phase': 'error'}).error('ClaSPy analysis failed')
+    print('ClaSPy analysis failed')
+
+logger.complete()
+"
+"""
+
+[tasks."forensic:view-logs"]
+description = "View recent NDJSON forensic logs with jq formatting"
+run = """
+echo "Recent forensic logs:"
+find ../../logs -name "*.jsonl" -o -name "*.ndjson" | head -10 | while read f; do
+    echo ""
+    echo "--- $f ---"
+    tail -5 "$f" | jq -c '.' 2>/dev/null || tail -5 "$f"
+done
+"""
+
+[tasks."forensic:telemetry-summary"]
+description = "Summarize telemetry events from all log files"
+run = """
+echo "Telemetry Event Summary"
+echo "========================="
+
+find ../../logs -name "*.jsonl" -exec cat {} \\; 2>/dev/null | \
+    python3 -c "
+import sys
+import json
+from collections import Counter
+
+events = Counter()
+components = Counter()
+
+for line in sys.stdin:
+    try:
+        event = json.loads(line)
+        ctx = event.get('context', {})
+        event_type = ctx.get('event_type', event.get('event', 'log'))
+        events[event_type] += 1
+        comp = event.get('component', 'unknown')
+        components[comp] += 1
+    except:
+        pass
+
+print('\nBy Event Type:')
+for evt, count in events.most_common(20):
+    print(f'  {evt}: {count}')
+
+print('\nBy Component:')
+for comp, count in components.most_common(10):
+    print(f'  {comp}: {count}')
+"
+"""
+
+# =============================================================================
+# Layer 2: View Generation Tasks
+# =============================================================================
+
+[tasks."views:wide"]
+description = "Generate wide format views from SSoT (Layer 2)"
+run = """
+uv sync --extra examination
+
+ARTIFACT_DIR="../../artifacts/views/wide"
+mkdir -p "$ARTIFACT_DIR"
+
+echo "Generating wide format views..."
+uv run python -c "
+from pathlib import Path
+from ith_python.storage import FeatureStore
+
+SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
+ARTIFACT_DIR = Path('../../artifacts/ssot')
+
+if not SSOT_PATH.exists():
+    print(f'ERROR: SSoT not found at {SSOT_PATH}')
+    print('Run: mise run features:compute')
+    exit(1)
+
+store = FeatureStore.from_parquet(SSOT_PATH)
+print(f'Loaded SSoT: {store}')
+
+for threshold in store.get_thresholds():
+    wide_df = store.to_wide(threshold=threshold, drop_warmup=True)
+    output_path = ARTIFACT_DIR / f'features_rb{threshold}.parquet'
+    wide_df.write_parquet(output_path)
+    print(f'  Saved {len(wide_df):,} rows to {output_path}')
+
+print('Wide views generated')
+"
+"""
+
+[tasks."views:nested"]
+description = "Generate nested JSON views from SSoT (Layer 2)"
+run = """
+uv sync --extra examination
+
+ARTIFACT_DIR="../../artifacts/views/nested"
+mkdir -p "$ARTIFACT_DIR"
+
+echo "Generating nested JSON views..."
+uv run python << 'PYTHON_EOF'
+import json
+from pathlib import Path
+from ith_python.storage import FeatureStore
+
+SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
+ARTIFACT_DIR = Path('../../artifacts/views/nested')
+ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+
+if not SSOT_PATH.exists():
+    print(f'ERROR: SSoT not found at {SSOT_PATH}')
+    exit(1)
+
+store = FeatureStore.from_parquet(SSOT_PATH)
+print(f'Loaded SSoT: {store}')
+
+sample_df = store.filter(symbol=store.get_symbols()[0])
+sample_store = type(store)(sample_df)
+nested = sample_store.to_nested()
+
+output_path = ARTIFACT_DIR / 'features.jsonl'
+newline = chr(10)
+with open(output_path, 'w') as f:
+    for record in nested[:1000]:
+        f.write(json.dumps(record, default=str) + newline)
+
+print(f'Saved {min(len(nested), 1000)} records to {output_path}')
+PYTHON_EOF
+"""
+
+[tasks."views:all"]
+description = "Generate all view formats from SSoT"
+depends = ["views:wide", "views:nested"]
+
+# =============================================================================
+# Layer 3: Analysis Tasks
+# =============================================================================
+
+[tasks."analysis:distribution"]
+description = "Run distribution analysis (Shapiro-Wilk, Beta fit)"
+run = """
+uv sync --extra examination
+
+ARTIFACT_DIR="../../artifacts/analysis"
+mkdir -p "$ARTIFACT_DIR"
+
+echo "Running distribution analysis..."
+uv run python -c "
+import json
+from pathlib import Path
+from ith_python.storage import FeatureStore
+from ith_python.statistical_examination.distribution import analyze_all_distributions
+
+SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
+ARTIFACT_DIR = Path('../../artifacts/ssot')
+
+store = FeatureStore.from_parquet(SSOT_PATH)
+wide_df = store.to_wide(drop_warmup=True)
+feature_cols = [c for c in wide_df.columns if c.startswith('ith_')]
+
+print(f'Analyzing {len(feature_cols)} features...')
+results = analyze_all_distributions(wide_df, feature_cols[:100])
+
+output_path = ARTIFACT_DIR / 'distribution.json'
+with open(output_path, 'w') as f:
+    json.dump(results, f, indent=2, default=str)
+
+print(f'Distribution analysis saved to {output_path}')
+if 'summary' in results:
+    print(f'   Normality rate: {results[\"summary\"].get(\"normality_rate\", 0):.1%}')
+"
+"""
+
+[tasks."analysis:dimensionality"]
+description = "Run dimensionality analysis (PCA, VIF)"
+run = """
+uv sync --extra examination
+
+ARTIFACT_DIR="../../artifacts/analysis"
+mkdir -p "$ARTIFACT_DIR"
+
+echo "Running dimensionality analysis..."
+uv run python -c "
+import json
+from pathlib import Path
+from ith_python.storage import FeatureStore
+from ith_python.statistical_examination.dimensionality import perform_pca, compute_vif
+
+SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
+ARTIFACT_DIR = Path('../../artifacts/ssot')
+
+store = FeatureStore.from_parquet(SSOT_PATH)
+wide_df = store.to_wide(drop_warmup=True)
+feature_cols = [c for c in wide_df.columns if c.startswith('ith_')]
+
+print(f'Analyzing {len(feature_cols)} features...')
+
+results = {}
+results['pca'] = perform_pca(wide_df, feature_cols)
+results['vif'] = compute_vif(wide_df, feature_cols)
+
+output_path = ARTIFACT_DIR / 'dimensionality.json'
+with open(output_path, 'w') as f:
+    json.dump(results, f, indent=2, default=str)
+
+print(f'Dimensionality analysis saved to {output_path}')
+if 'pca' in results:
+    print(f'   PCA 95% components: {results[\"pca\"].get(\"n_components_95_variance\")}')
+    print(f'   Participation ratio: {results[\"pca\"].get(\"participation_ratio\", 0):.2f}')
+"
+"""
+
+[tasks."analysis:awfo"]
+description = "Run Anchored Walk-Forward Optimization analysis"
+run = """
+uv sync --extra examination
+
+ARTIFACT_DIR="../../artifacts/analysis"
+mkdir -p "$ARTIFACT_DIR"
+
+echo "Running Anchored Walk-Forward Optimization (AWFO)..."
+uv run python << 'PYTHON_EOF'
+import json
+from pathlib import Path
+import numpy as np
+
+from ith_python.storage import FeatureStore
+from ith_python.walk_forward import AnchoredWalkForward, evaluate_awfo, plot_awfo_windows
+
+SSOT_PATH = Path('../../artifacts/ssot/features_long.parquet')
+ARTIFACT_DIR = Path('../../artifacts/analysis')
+
+if not SSOT_PATH.exists():
+    print(f'ERROR: SSoT not found at {SSOT_PATH}')
+    print('Run: mise run features:compute')
+    exit(1)
+
+store = FeatureStore.from_parquet(SSOT_PATH)
+wide_df = store.to_wide(drop_warmup=True)
+feature_cols = [c for c in wide_df.columns if c.startswith('ith_')]
+
+print(f'Loaded {len(wide_df)} samples with {len(feature_cols)} features')
+
+demo_feature = None
+for col in feature_cols:
+    if 'lb100_bull_cv' in col:
+        demo_feature = col
+        break
+
+if demo_feature is None:
+    demo_feature = feature_cols[0]
+
+feature_data = wide_df[demo_feature].drop_nulls().to_numpy()
+print(f'Using feature: {demo_feature} ({len(feature_data)} valid samples)')
+
+awfo = AnchoredWalkForward(
+    n_samples=len(feature_data),
+    train_size=200,
+    test_size=50,
+    n_anchors=5,
+    anchor_spacing=50,
+    anchored=True,
+)
+
+print(f'\nAWFO Configuration:')
+summary = awfo.summary()
+print(f'  Total windows: {summary["n_windows_total"]}')
+print(f'  Windows per anchor: {summary["windows_per_anchor"]}')
+print(f'  Train size: {summary["train_size"]}, Test size: {summary["test_size"]}')
+
+def eval_mean_diff(train, test):
+    return float(np.mean(test) - np.mean(train))
+
+result = evaluate_awfo(feature_data, awfo, eval_mean_diff)
+
+print(f'\nAWFO Results for {demo_feature}:')
+print(f'  Aggregate mean: {result.aggregate_mean:.6f}')
+print(f'  Aggregate std: {result.aggregate_std:.6f}')
+print(f'  Per-anchor means: {[f"{m:.4f}" for m in result.per_anchor_means]}')
+print(f'  Total windows evaluated: {result.n_windows_total}')
+
+viz = plot_awfo_windows(awfo)
+print(f'\n{viz}')
+
+output = {
+    'feature': demo_feature,
+    'n_samples': len(feature_data),
+    'config': summary,
+    'results': {
+        'aggregate_mean': result.aggregate_mean,
+        'aggregate_std': result.aggregate_std,
+        'per_anchor_means': result.per_anchor_means,
+        'per_anchor_stds': result.per_anchor_stds,
+        'n_windows': result.n_windows_total,
+    }
+}
+
+output_path = ARTIFACT_DIR / 'awfo.json'
+with open(output_path, 'w') as f:
+    json.dump(output, f, indent=2, default=str)
+
+print(f'\nAWFO results saved to {output_path}')
+PYTHON_EOF
+"""
+
+[tasks."analysis:all"]
+description = "Run all statistical analyses"
+depends = ["analysis:distribution", "analysis:dimensionality"]
+
+# =============================================================================
+# Upgrade Tasks (Independent Layer Rebuilds)
+# =============================================================================
+
+[tasks."upgrade:analysis"]
+description = "Re-run analysis only (after analysis code changes)"
+depends = ["analysis:all"]
+
+[tasks."upgrade:views"]
+description = "Regenerate views only (after view code changes)"
+depends = ["views:all"]
+
+# =============================================================================
+# Cross-Validation Tasks
+# =============================================================================
+
+[tasks."cross-validate:ith"]
+description = "Cross-validate Numba vs Rust ITH implementations"
+run = "uv run --frozen python -m ith_python.side_by_side_demo"
+
+# =============================================================================
+# Preflight Checks (Data Layer Validation)
+# =============================================================================
+
+[tasks."preflight:warmup"]
+description = "Validate data sufficiency after warmup period"
+run = """
+uv sync --extra examination
+
+echo "Preflight: Warmup Validation"
+uv run python << 'PYTHON_EOF'
+from ith_python.storage import validate_warmup
+
+N_BARS = 2000
+LOOKBACKS = [20, 50, 100, 200, 500]
+MIN_VALID_BARS = 500
+
+is_valid, info = validate_warmup(N_BARS, LOOKBACKS, MIN_VALID_BARS)
+
+print(f'  Input bars: {info["n_bars"]}')
+print(f'  Max lookback: {info["max_lookback"]}')
+print(f'  Warmup period: {info["warmup_bars"]} bars')
+print(f'  Valid bars after warmup: {info["valid_bars"]}')
+print(f'  Minimum required: {info["min_required"]}')
+print()
+
+if is_valid:
+    print('Warmup validation passed')
+else:
+    print(f'ERROR: {info["error"]}')
+    exit(1)
+PYTHON_EOF
+"""
+
+[tasks."preflight:data-config"]
+description = "Load and validate forensic configuration"
+run = """
+uv sync
+echo "Loading forensic configuration..."
+uv run python -m ith_python.config.forensic --validate
+"""
+
+[tasks."preflight:rangebar-cache"]
+description = "Check range bar data availability in ClickHouse cache"
+run = """
+uv sync --extra validation
+
+echo "Checking range bar cache status..."
+uv run python << 'PYTHON_EOF'
+import sys
+from ith_python.config import load_forensic_config
+
+try:
+    from rangebar import RangeBarCache
+except ImportError:
+    print("ERROR: rangebar package not installed")
+    sys.exit(1)
+
+config = load_forensic_config()
+cache = RangeBarCache()
+
+print(f"Checking {config.total_combinations} symbol x threshold combinations...")
+print()
+
+missing = []
+available = []
+
+for symbol in config.symbols:
+    for threshold in config.thresholds:
+        count = cache.count_bars(symbol, threshold)
+        if count == 0:
+            missing.append((symbol, threshold))
+            print(f"  MISSING: {symbol} @ {threshold}dbps: NO DATA")
+        else:
+            available.append((symbol, threshold, count))
+            print(f"  OK: {symbol} @ {threshold}dbps: {count:,} bars")
+
+print()
+print(f"Available: {len(available)} / {config.total_combinations}")
+print(f"Missing: {len(missing)} / {config.total_combinations}")
+
+if missing and config.preflight.auto_fetch:
+    print()
+    print("WARN: Missing data will be fetched by data:precompute task")
+    with open("../../.missing_data.txt", "w") as f:
+        for symbol, threshold in missing:
+            f.write(f"{symbol},{threshold}\\n")
+elif missing:
+    print()
+    print("ERROR: Missing data and auto_fetch=false")
+    sys.exit(1)
+PYTHON_EOF
+"""
+
+[tasks."data:precompute-incremental"]
+description = "Fetch and precompute missing range bar data from Binance"
+run = """
+uv sync --extra validation
+
+echo "Precomputing range bar data..."
+uv run python << 'PYTHON_EOF'
+import sys
+from pathlib import Path
+from datetime import datetime, timedelta
+from ith_python.config import load_forensic_config
+
+try:
+    from rangebar import precompute_range_bars
+except ImportError:
+    print("ERROR: rangebar package not installed")
+    sys.exit(1)
+
+config = load_forensic_config()
+
+missing_file = Path("../../.missing_data.txt")
+if missing_file.exists():
+    missing = []
+    with open(missing_file) as f:
+        for line in f:
+            parts = line.strip().split(",")
+            if len(parts) == 2:
+                missing.append((parts[0], int(parts[1])))
+    missing_file.unlink()
+else:
+    missing = config.symbol_threshold_matrix
+
+if not missing:
+    print("No missing data to precompute")
+    sys.exit(0)
+
+print(f"Precomputing {len(missing)} symbol x threshold combinations...")
+
+end_date = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+start_date = (datetime.now() - timedelta(days=config.preflight.max_lookback_days)).strftime("%Y-%m-%d")
+
+print(f"Date range: {start_date} to {end_date}")
+
+success = 0
+failed = 0
+
+for symbol, threshold in missing:
+    print(f"Processing {symbol} @ {threshold}dbps...")
+    try:
+        result = precompute_range_bars(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            threshold_decimal_bps=threshold,
+            source=config.source,
+            market=config.market,
+        )
+        print(f"  OK: {result.total_bars:,} bars")
+        success += 1
+    except (OSError, ValueError, RuntimeError) as e:
+        print(f"  FAIL: {e}")
+        failed += 1
+
+print()
+print(f"Completed: {success} success, {failed} failed")
+
+if failed > 0:
+    sys.exit(1)
+PYTHON_EOF
+"""
+
+[tasks."data:validate-continuity"]
+description = "Validate range bar continuity"
+run = """
+uv sync --extra validation
+
+echo "Validating range bar continuity..."
+uv run python << 'PYTHON_EOF'
+import sys
+from ith_python.config import load_forensic_config
+
+try:
+    from rangebar import RangeBarCache, validate_continuity_tiered
+except ImportError:
+    print("ERROR: rangebar package not installed")
+    sys.exit(1)
+
+config = load_forensic_config()
+cache = RangeBarCache()
+
+print(f"Validation preset: {config.validation.preset}")
+print()
+
+all_valid = True
+
+for symbol in config.symbols:
+    for threshold in config.thresholds:
+        df, count = cache.get_n_bars(symbol=symbol, threshold_decimal_bps=threshold, n_bars=10000)
+
+        if df is None or len(df) < 100:
+            print(f"  WARN: {symbol} @ {threshold}dbps: Insufficient data")
+            continue
+
+        result = validate_continuity_tiered(
+            df=df,
+            symbol=symbol,
+            threshold_decimal_bps=threshold,
+            validation=config.validation.preset,
+        )
+
+        if result.is_valid:
+            print(f"  OK: {symbol} @ {threshold}dbps: {len(df):,} bars")
+        else:
+            all_valid = False
+            print(f"  FAIL: {symbol} @ {threshold}dbps: GAPS detected")
+
+print()
+if all_valid:
+    print("All data passes validation")
+else:
+    if config.validation.on_failure == "error":
+        sys.exit(1)
+    print("WARN: Validation issues detected")
+PYTHON_EOF
+"""
+
+# =============================================================================
+# Feature Computation (Layer 1)
+# =============================================================================
+
+[tasks."features:compute"]
+description = "Compute ITH features from range bar data (Layer 1)"
+run = """
+uv sync --extra examination --extra validation
+
+ARTIFACT_DIR="../../artifacts/ssot"
+mkdir -p "$ARTIFACT_DIR"
+
+echo "Computing ITH features..."
+uv run python << 'PYTHON_EOF'
+import sys
+import re
+from pathlib import Path
+import numpy as np
+import polars as pl
+from datetime import datetime, timezone
+
+from rangebar import get_n_range_bars
+from ith_python.features import compute_features, FeatureConfig
+from ith_python.storage import FeatureStore
+from ith_python.telemetry.provenance import fingerprint_array
+from ith_python.config import load_forensic_config
+from ith_python.claspy_features import extract_claspy_features_safe
+
+config = load_forensic_config()
+SYMBOLS = config.symbols
+N_BARS = 2000
+THRESHOLDS = config.thresholds
+LOOKBACKS = config.lookbacks
+END_DATE = '2026-01-20'
+
+ARTIFACT_DIR = Path(config.output.ssot_dir)
+ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+
+print(f'Configuration loaded from config/forensic.toml')
+print(f'Computing features for {SYMBOLS}')
+print(f'Thresholds: {THRESHOLDS}, Lookbacks: {LOOKBACKS}')
+
+all_records = []
+computed_at = datetime.now(timezone.utc)
+
+for symbol in SYMBOLS:
+    print(f'  Fetching {N_BARS} bars for {symbol}...')
+
+    bars = get_n_range_bars(
+        symbol=symbol,
+        n_bars=N_BARS,
+        threshold_decimal_bps=100,
+        end_date=END_DATE,
+        use_cache=True,
+        fetch_if_missing=True,
+    )
+
+    if bars is None or len(bars) < 100:
+        print(f'    Skipping {symbol}: insufficient bars')
+        continue
+
+    closes = bars['Close'].to_numpy()
+    returns = np.diff(closes) / closes[:-1]
+    nav = np.concatenate([[1.0], np.cumprod(1 + returns)])
+    nav_fp = fingerprint_array(nav, f'{symbol}_nav')
+
+    for threshold in THRESHOLDS:
+        print(f'    Computing features for threshold={threshold}...')
+        feature_config = FeatureConfig(lookbacks=LOOKBACKS, threshold_dbps=threshold)
+        wide_df = compute_features(nav, feature_config, emit_telemetry=config.telemetry.enabled)
+
+        feature_cols = [c for c in wide_df.columns if c.startswith('ith_')]
+        for col in feature_cols:
+            match = re.match(r'ith_rb(\\d+)_lb(\\d+)_(.+)', col)
+            if not match:
+                continue
+
+            lookback = int(match.group(2))
+            feature = match.group(3)
+
+            for row in wide_df.iter_rows(named=True):
+                bar_index = row['bar_index']
+                value = row[col]
+                all_records.append({
+                    'bar_index': bar_index,
+                    'symbol': symbol,
+                    'threshold_dbps': threshold,
+                    'lookback': lookback,
+                    'feature': feature,
+                    'value': value,
+                    'valid': value is not None and not (isinstance(value, float) and np.isnan(value)),
+                    'computed_at': computed_at,
+                    'nav_hash': nav_fp['sha256'][:16],
+                })
+
+    # ClaSPy features
+    print(f'    Extracting ClaSPy regime features...')
+    claspy_result = extract_claspy_features_safe(nav)
+    if claspy_result:
+        claspy_dict = claspy_result.to_dict(prefix='')
+        for claspy_feat, claspy_val in claspy_dict.items():
+            all_records.append({
+                'bar_index': 0,
+                'symbol': symbol,
+                'threshold_dbps': 0,
+                'lookback': 0,
+                'feature': f'clasp_{claspy_feat}',
+                'value': float(claspy_val) if claspy_val is not None else None,
+                'valid': claspy_val is not None and claspy_val != -1,
+                'computed_at': computed_at,
+                'nav_hash': nav_fp['sha256'][:16],
+            })
+        print(f'      Added {len(claspy_dict)} ClaSPy features')
+
+if not all_records:
+    print('ERROR: No features computed')
+    sys.exit(1)
+
+df = pl.DataFrame(all_records)
+df = df.with_columns([
+    pl.col('bar_index').cast(pl.UInt32),
+    pl.col('symbol').cast(pl.Categorical),
+    pl.col('threshold_dbps').cast(pl.UInt16),
+    pl.col('lookback').cast(pl.UInt16),
+    pl.col('feature').cast(pl.Categorical),
+    pl.col('value').cast(pl.Float64),
+    pl.col('valid').cast(pl.Boolean),
+])
+
+output_path = ARTIFACT_DIR / 'features_long.parquet'
+df.write_parquet(output_path)
+print(f'Saved {len(df):,} rows to {output_path}')
+PYTHON_EOF
+"""
