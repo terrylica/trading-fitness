@@ -1,19 +1,15 @@
 # data-ingestion
 
-> Placeholder service for future data ingestion pipelines.
+> Placeholder service for market data ingestion pipelines.
 
 **← [Back to trading-fitness](../../CLAUDE.md)**
 
-## Status
+## Status: Not Implemented
 
-Not yet implemented. Reserved for:
+Reserved for future development:
 
-- Market data feeds
+- Market data feeds (WebSocket)
 - NAV data import automation
-- Real-time data streaming
+- Real-time streaming to ClickHouse
 
-## Planned Stack
-
-- Bun for async I/O
-- WebSocket connections
-- Queue-based processing
+**Planned stack**: Bun + WebSocket + queue-based processing

@@ -1,19 +1,15 @@
 # strategy-engine
 
-> Placeholder service for future strategy execution engine.
+> Placeholder service for strategy execution engine.
 
 **← [Back to trading-fitness](../../CLAUDE.md)**
 
-## Status
+## Status: Not Implemented
 
-Not yet implemented. Reserved for:
+Reserved for future development:
 
 - Strategy backtesting
 - Signal generation
 - Portfolio optimization
 
-## Planned Stack
-
-- Rust for performance-critical calculations
-- Python for strategy logic
-- Shared types for cross-language communication
+**Planned stack**: Rust (compute) + Python (logic) + shared-types

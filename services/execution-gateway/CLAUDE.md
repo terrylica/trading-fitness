@@ -1,19 +1,15 @@
 # execution-gateway
 
-> Placeholder service for future trade execution gateway.
+> Placeholder service for trade execution gateway.
 
 **← [Back to trading-fitness](../../CLAUDE.md)**
 
-## Status
+## Status: Not Implemented
 
-Not yet implemented. Reserved for:
+Reserved for future development:
 
 - Broker API integration
 - Order management
 - Position tracking
 
-## Planned Stack
-
-- Bun for async API calls
-- Rate limiting and retry logic
-- Audit logging
+**Planned stack**: Bun + rate limiting + audit logging

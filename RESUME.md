@@ -2,7 +2,59 @@
 
 > Quick context for continuing work on trading-fitness.
 
-## Last Session: 2026-01-26
+## Last Session: 2026-01-28
+
+### Completed Work
+
+**CLAUDE.md Hub-and-Spoke Reorganization**
+
+Reorganized project memory following Link Farm + Hub-and-Spoke with Progressive Disclosure pattern:
+
+| File                              | Changes                                                            |
+| --------------------------------- | ------------------------------------------------------------------ |
+| Root `CLAUDE.md`                  | Reorganized as hub with navigation, package map, Ouroboros support |
+| `docs/infrastructure/DATA.md`     | DRY - links to root for timestamp precision gotcha                 |
+| `packages/ith-python/CLAUDE.md`   | Made concise with 3-layer architecture diagram                     |
+| `packages/metrics-rust/CLAUDE.md` | Shortened from ~475 to ~124 lines                                  |
+| `services/*/CLAUDE.md`            | Simplified placeholders                                            |
+
+**Ouroboros Support Documented**
+
+- Added Ouroboros mode section to Data Infrastructure
+- ClickHouse table: `range_bars_ouroboros_year`
+- Precompute script: `scripts/precompute_ouroboros_year.py`
+- Currently running on bigblack with ~24M bars processed
+
+**Timestamp Precision by Year Gotcha**
+
+Documented critical data handling issue:
+
+- 2022-2023: `datetime64[ms]` - use as-is
+- 2024+: `datetime64[ns]` - divide by 1,000,000
+- Symptom: timestamps show year 52000+ or 1970 if wrong
+
+### Ouroboros Precompute Status (bigblack)
+
+| Symbol  | 2022 | 2023 | 2024 | 2025 | 2026 |
+| ------- | ---- | ---- | ---- | ---- | ---- |
+| BNBUSDT | 635K | 265K | 395K | 380K | 8K   |
+| BTCUSDT | 46K  | 10K  | 28K  | 7K   | 6K   |
+| ETHUSDT | 7.7M | 2.1M | 3.4M | -    | -    |
+| SOLUSDT | 1.8M | 1M   | 933K | 775K | 20K  |
+
+### To Continue
+
+```bash
+# Check Ouroboros precompute progress
+ssh bigblack "clickhouse-client --query 'SELECT symbol, toYear(toDateTime(timestamp_ms/1000)) as year, count() FROM rangebar_cache.range_bars_ouroboros_year GROUP BY 1,2 ORDER BY 1,2'"
+
+# Run statistical examination (after precompute completes)
+mise run forensic:full-pipeline
+```
+
+---
+
+## Previous Session: 2026-01-26
 
 ### Completed Work
 

@@ -103,6 +103,12 @@ ssh bigblack "cd ~/eon/trading-fitness/packages/ith-python && \
   ~/.local/bin/uv run python ../../scripts/precompute_historical_parallel.py --workers 8"
 ```
 
+## Timestamp Precision by Year
+
+See [CLAUDE.md](../../CLAUDE.md#timestamp-precision-by-year-gotcha) for the timestamp precision gotcha (2022-2023 ms vs 2024+ ns).
+
+---
+
 ## Data Coverage
 
 Updated: 2026-01-26

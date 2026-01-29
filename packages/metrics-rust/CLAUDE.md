@@ -1,6 +1,6 @@
 # metrics-rust
 
-> Time-agnostic ITH metrics for BiLSTM feature engineering.
+> Time-agnostic ITH metrics for BiLSTM feature engineering with PyO3 Python bindings.
 
 **← [Back to trading-fitness](../../CLAUDE.md)**
 
@@ -13,423 +13,81 @@
 | Build (Python)   | `maturin build --features python`              |
 | Develop (Python) | `maturin develop --features python`            |
 
-## Module Map (9 Price-Only Metrics + Rolling/Multi-Scale ITH)
+---
 
-| Module              | Metrics                          | Output Range |
-| ------------------- | -------------------------------- | ------------ |
-| `entropy.rs`        | Permutation, Sample, Shannon     | [0, 1]       |
-| `risk.rs`           | Omega, Ulcer, GK Vol, Kaufman ER | [0, 1]       |
-| `fractal.rs`        | Hurst, Fractal Dimension         | [0, 1]       |
-| `ith.rs`            | Bull ITH, Bear ITH               | epochs       |
-| `ith_rolling.rs`    | Rolling window ITH features      | [0, 1]       |
-| `ith_multiscale.rs` | Multi-scale ITH (Arrow-native)   | [0, 1]       |
-| `ith_normalize.rs`  | Bounded normalization utilities  | [0, 1]       |
-| `nav.rs`            | NAV construction                 | prices       |
-| `adaptive.rs`       | Utilities (no magic numbers)     | various      |
-| `python.rs`         | PyO3 bindings                    | -            |
+## Module Map
 
-## Data Requirements
+| Module              | Metrics                          | Output |
+| ------------------- | -------------------------------- | ------ |
+| `entropy.rs`        | Permutation, Sample, Shannon     | [0, 1] |
+| `risk.rs`           | Omega, Ulcer, GK Vol, Kaufman ER | [0, 1] |
+| `fractal.rs`        | Hurst, Fractal Dimension         | [0, 1] |
+| `ith.rs`            | Bull ITH, Bear ITH               | epochs |
+| `ith_rolling.rs`    | Rolling window ITH features      | [0, 1] |
+| `ith_multiscale.rs` | Multi-scale ITH (Arrow-native)   | [0, 1] |
+| `python.rs`         | PyO3 bindings                    | -      |
 
-**Input**: Price series only (no volume required)
-
-- Works with Binance aggTrades (close prices)
-- Works with Exness tick data (mid prices)
+**All metrics produce bounded [0, 1] outputs** suitable for LSTM/BiLSTM consumption.
 
 ---
 
-## Python Bindings (PyO3)
+## Critical: TMAEG Auto-Calculation
 
-The library provides zero-copy Python bindings via PyO3 and maturin.
-
-### Installation
-
-```bash
-cd packages/metrics-rust
-
-# Development install
-maturin develop --features python
-
-# Build wheel for distribution
-maturin build --features python --release
-# Wheel: target/wheels/trading_fitness_metrics-*.whl
-```
-
-### Python API
-
-```python
-import numpy as np
-from trading_fitness_metrics import (
-    # Entropy metrics
-    permutation_entropy, sample_entropy, shannon_entropy,
-    # Risk metrics
-    omega_ratio, ulcer_index, garman_klass_volatility, kaufman_efficiency_ratio,
-    # Fractal metrics
-    hurst_exponent, fractal_dimension,
-    # NAV & utilities
-    build_nav_from_closes, adaptive_windows,
-    optimal_bins_freedman_diaconis, optimal_embedding_dimension,
-    optimal_sample_entropy_tolerance, relative_epsilon,
-    # ITH analysis
-    bull_ith, bear_ith,
-    # Batch API
-    compute_all_metrics,
-    # Classes
-    BullIthResult, BearIthResult, MetricsResult,
-    GarmanKlassNormalizer, OnlineNormalizer,
-)
-```
-
-### Function Reference
-
-#### Entropy Metrics
-
-| Function              | Signature                      | Output |
-| --------------------- | ------------------------------ | ------ |
-| `permutation_entropy` | `(prices, m=3) -> float`       | [0, 1] |
-| `sample_entropy`      | `(data, m=2, r=None) -> float` | [0, 1) |
-| `shannon_entropy`     | `(data, n_bins=None) -> float` | [0, 1] |
-
-#### Risk Metrics
-
-| Function                   | Signature                           | Output |
-| -------------------------- | ----------------------------------- | ------ |
-| `omega_ratio`              | `(returns, threshold=0.0) -> float` | [0, 1) |
-| `ulcer_index`              | `(prices) -> float`                 | [0, 1] |
-| `garman_klass_volatility`  | `(open, high, low, close) -> float` | [0, 1) |
-| `kaufman_efficiency_ratio` | `(prices) -> float`                 | [0, 1] |
-
-#### Fractal Metrics
-
-| Function            | Signature                     | Output |
-| ------------------- | ----------------------------- | ------ |
-| `hurst_exponent`    | `(prices) -> float`           | [0, 1] |
-| `fractal_dimension` | `(prices, k_max=10) -> float` | [0, 1] |
-
-#### ITH Analysis
-
-| Function   | Signature                       | Returns                 |
-| ---------- | ------------------------------- | ----------------------- |
-| `bull_ith` | `(nav, tmaeg) -> BullIthResult` | Long position analysis  |
-| `bear_ith` | `(nav, tmaeg) -> BearIthResult` | Short position analysis |
-
-#### Rolling ITH Features (Time-Agnostic)
-
-| Function              | Signature                               | Returns                  |
-| --------------------- | --------------------------------------- | ------------------------ |
-| `compute_rolling_ith` | `(nav, lookback) -> RollingIthFeatures` | 8 bounded [0,1] features |
-| `optimal_tmaeg`       | `(nav, lookback) -> float`              | Auto-calculated TMAEG    |
-
-#### Batch API
-
-| Function              | Signature                                       | Returns       |
-| --------------------- | ----------------------------------------------- | ------------- |
-| `compute_all_metrics` | `(prices, returns, ohlc=None) -> MetricsResult` | All 9 metrics |
-
-### Classes
-
-#### `BullIthResult` / `BearIthResult`
-
-```python
-result = bull_ith(nav, tmaeg=0.05)
-result.num_of_epochs      # int: Number of epochs detected
-result.max_drawdown       # float: Maximum drawdown (bull) / max_runup (bear)
-result.intervals_cv       # float: Coefficient of variation
-result.excess_gains()     # NDArray[float64]: Excess gains per bar
-result.excess_losses()    # NDArray[float64]: Excess losses per bar
-result.epochs()           # NDArray[bool_]: Boolean mask of epochs
-```
-
-#### `MetricsResult`
-
-```python
-metrics = compute_all_metrics(prices, returns, ohlc=(o, h, l, c))
-metrics.permutation_entropy   # float
-metrics.sample_entropy        # float
-metrics.shannon_entropy       # float
-metrics.omega_ratio           # float
-metrics.ulcer_index           # float
-metrics.garman_klass_vol      # float
-metrics.kaufman_er            # float
-metrics.hurst_exponent        # float
-metrics.fractal_dimension     # float
-metrics.all_bounded()         # bool: All in [0, 1]
-metrics.has_nan()             # bool: Any NaN values
-```
-
-#### `RollingIthFeatures`
-
-```python
-from trading_fitness_metrics import compute_rolling_ith, optimal_tmaeg
-
-# Compute rolling features over 100-bar lookback windows
-# TMAEG is automatically calculated from data volatility
-features = compute_rolling_ith(nav, lookback=100)
-
-# To inspect the auto-calculated TMAEG:
-auto_tmaeg = optimal_tmaeg(nav, lookback=100)
-
-# 8 feature arrays, all bounded [0, 1]
-features.bull_epoch_density    # NDArray: Normalized bull epoch count
-features.bear_epoch_density    # NDArray: Normalized bear epoch count
-features.bull_excess_gain      # NDArray: Normalized sum of bull excess gains
-features.bear_excess_gain      # NDArray: Normalized sum of bear excess gains
-features.bull_cv               # NDArray: Normalized bull intervals CV
-features.bear_cv               # NDArray: Normalized bear intervals CV
-features.max_drawdown          # NDArray: Max drawdown in window
-features.max_runup             # NDArray: Max runup in window
-
-# First lookback-1 values are NaN (insufficient data)
-assert np.all(np.isnan(features.bull_epoch_density[:99]))
-```
-
-#### `GarmanKlassNormalizer` / `OnlineNormalizer`
-
-```python
-# Stateful normalizers for streaming data
-normalizer = GarmanKlassNormalizer(expected_len=100)
-for bar in ohlc_bars:
-    raw_vol = garman_klass_volatility(bar.o, bar.h, bar.l, bar.c)
-    normalized = normalizer.normalize(raw_vol)  # (0, 1)
-normalizer.reset()  # Reset state
-```
-
-### Python Example
-
-```python
-import numpy as np
-from trading_fitness_metrics import (
-    build_nav_from_closes, omega_ratio, hurst_exponent,
-    bull_ith, compute_all_metrics
-)
-
-# Sample price data
-prices = np.array([100.0, 102.5, 101.0, 105.0, 103.5, 108.0, 106.0], dtype=np.float64)
-returns = np.diff(prices) / prices[:-1]
-
-# Individual metrics (all outputs [0, 1])
-omega = omega_ratio(returns, threshold=0.0)
-print(f"Omega ratio: {omega:.4f}")
-
-# For Hurst, need 256+ samples
-long_prices = np.cumsum(np.random.randn(300)) + 1000
-hurst = hurst_exponent(long_prices)
-print(f"Hurst exponent: {hurst:.4f}")
-
-# ITH analysis
-nav = build_nav_from_closes(prices)
-result = bull_ith(nav, tmaeg=0.05)
-print(f"Bull epochs: {result.num_of_epochs}")
-
-# Batch API (requires 256+ prices)
-metrics = compute_all_metrics(long_prices, np.diff(long_prices)/long_prices[:-1])
-print(f"All bounded: {metrics.all_bounded()}")
-```
-
----
-
-## Multi-Scale ITH Features (Arrow-Native)
-
-The `compute_multiscale_ith()` function computes ITH features across multiple lookback windows simultaneously, returning a PyArrow RecordBatch for efficient downstream processing.
-
-### Critical: `threshold_dbps` is for Column Naming Only
-
-```python
-from trading_fitness_metrics import MultiscaleIthConfig, compute_multiscale_ith
-
-config = MultiscaleIthConfig(
-    lookbacks=[20, 50, 100, 200, 500],
-    threshold_dbps=25,  # ← COLUMN NAMING ONLY, NOT computation parameter!
-)
-batch = compute_multiscale_ith(nav, config)
-```
-
-**IMPORTANT**: The `threshold_dbps` parameter in `MultiscaleIthConfig` is **purely for column naming**. It does NOT affect the TMAEG used in computation. The actual TMAEG is auto-calculated from data volatility:
+The `threshold_dbps` parameter in `MultiscaleIthConfig` is **for column naming only**. The actual TMAEG is auto-calculated:
 
 ```
 tmaeg = 3.0 × MAD_std × sqrt(lookback), clamped to [0.001, 0.50]
 ```
 
-This means if you compute features for thresholds `[25, 50, 100, 250]` from the **same NAV series**, all will produce **identical feature values** - only the column names differ (`ith_rb25_*`, `ith_rb50_*`, etc.).
+To get different feature values, fetch range bars at different thresholds (different NAV series) BEFORE computing ITH.
 
-To get different feature values, you must fetch range bars at different thresholds (which produce different NAV series) BEFORE computing ITH.
+---
 
-### Column Naming Convention
+## Python API (Quick)
+
+```python
+from trading_fitness_metrics import (
+    compute_rolling_ith, optimal_tmaeg,
+    bull_ith, bear_ith,
+    compute_all_metrics,
+    MultiscaleIthConfig, compute_multiscale_ith,
+)
+
+# Rolling ITH features (8 bounded [0,1] outputs)
+features = compute_rolling_ith(nav, lookback=100)
+
+# Multi-scale ITH (Arrow RecordBatch)
+config = MultiscaleIthConfig(lookbacks=[20, 50, 100], threshold_dbps=25)
+batch = compute_multiscale_ith(nav, config)
+```
+
+### 8 Features per Lookback
+
+| Feature   | Range  | Description                |
+| --------- | ------ | -------------------------- |
+| `bull_ed` | [0, 1] | Bull epoch density         |
+| `bear_ed` | [0, 1] | Bear epoch density         |
+| `bull_eg` | [0, 1] | Bull excess gain (tanh)    |
+| `bear_eg` | [0, 1] | Bear excess gain (tanh)    |
+| `bull_cv` | [0, 1] | Bull intervals CV          |
+| `bear_cv` | [0, 1] | Bear intervals CV          |
+| `max_dd`  | [0, 1] | Maximum drawdown in window |
+| `max_ru`  | [0, 1] | Maximum runup in window    |
+
+---
+
+## Column Naming Convention
 
 ```
 ith_rb{threshold}_lb{lookback}_{feature}
 
 Example: ith_rb25_lb100_bull_ed
-  - rb25: Range bar 25 dbps (for identification only)
-  - lb100: 100-bar lookback window
-  - bull_ed: Bull epoch density feature
-```
-
-### 8 Features per Lookback
-
-| Feature   | Full Name          | Range  | Description                        |
-| --------- | ------------------ | ------ | ---------------------------------- |
-| `bull_ed` | Bull epoch density | [0, 1] | Normalized bull epoch count        |
-| `bear_ed` | Bear epoch density | [0, 1] | Normalized bear epoch count        |
-| `bull_eg` | Bull excess gain   | [0, 1] | Normalized sum of bull excess      |
-| `bear_eg` | Bear excess gain   | [0, 1] | Normalized sum of bear excess      |
-| `bull_cv` | Bull intervals CV  | [0, 1] | Normalized bull coefficient of var |
-| `bear_cv` | Bear intervals CV  | [0, 1] | Normalized bear coefficient of var |
-| `max_dd`  | Maximum drawdown   | [0, 1] | Max drawdown in window             |
-| `max_ru`  | Maximum runup      | [0, 1] | Max runup in window                |
-
-### Sparse Wide Table Design
-
-When using `pl.concat(..., how='diagonal')` to combine multiple thresholds, the result is a **sparse wide table** with 75% structural sparsity:
-
-```
-┌─────────────────┬────────────┬───────────────┬───────────────┬─────────────┐
-│ threshold_dbps  │ symbol     │ ith_rb25_*    │ ith_rb50_*    │ ith_rb100_* │
-├─────────────────┼────────────┼───────────────┼───────────────┼─────────────┤
-│ 25              │ BTCUSDT    │ ✓ VALUES      │ null          │ null        │
-│ 50              │ BTCUSDT    │ null          │ ✓ VALUES      │ null        │
-│ 100             │ BTCUSDT    │ null          │ null          │ ✓ VALUES    │
-└─────────────────┴────────────┴───────────────┴───────────────┴─────────────┘
-```
-
-This is **by design** - each row only has values for its matching threshold's columns.
-
-**Reference**: [docs/forensic/E2E.md](../../docs/forensic/E2E.md) for full data structure documentation.
-
----
-
-## Rolling ITH Features (Time-Agnostic)
-
-The `compute_rolling_ith()` function computes ITH features over sliding windows,
-producing 8 bounded [0, 1] outputs suitable for LSTM/BiLSTM consumption.
-
-### Auto-TMAEG Calculation
-
-The TMAEG threshold is **automatically calculated** based on the data's volatility
-using MAD (Median Absolute Deviation) based estimation. This ensures sensible
-epoch density regardless of the bar type or instrument volatility.
-
-```
-tmaeg = 3.0 × MAD_std × sqrt(lookback), clamped to [0.001, 0.50]
-where MAD_std = 1.4826 × MAD(returns)
-```
-
-To inspect the calculated TMAEG, use `optimal_tmaeg(nav, lookback)`.
-
-### Feature Normalization
-
-| Feature       | Raw Range | Transform                         | Output |
-| ------------- | --------- | --------------------------------- | ------ |
-| epoch_density | [0, ∞)    | `min(epochs / (lookback/100), 1)` | [0, 1] |
-| excess_gain   | [0, ∞)    | `tanh(x * 5.0)`                   | [0, 1) |
-| intervals_cv  | [0, ∞)    | `sigmoid((cv - 0.5) * 4.0)`       | (0, 1) |
-| max_drawdown  | [0, 1]    | None (already bounded)            | [0, 1] |
-| max_runup     | [0, 1]    | None (already bounded)            | [0, 1] |
-
-### Time-Agnostic Design
-
-Rolling ITH features are designed for use with any bar type:
-
-- **Range bars**: Fixed price movement per bar
-- **Tick bars**: Fixed number of trades per bar
-- **Volume bars**: Fixed volume per bar
-- **Time bars**: Traditional OHLC (still works)
-
-### Downstream Usage Example
-
-```python
-# In consuming project (e.g., rangebar-py)
-from rangebar import get_range_bars
-from trading_fitness_metrics import compute_rolling_ith, optimal_tmaeg
-
-# Get range bars (time-agnostic)
-bars = get_range_bars("BTCUSDT", "2024-01-01", "2024-06-30", threshold=250)
-
-# Build NAV from close prices
-nav = (bars['Close'].pct_change().fillna(0) + 1).cumprod().values
-
-# Compute rolling ITH features (all bounded [0, 1])
-# TMAEG is automatically calculated from data volatility
-features = compute_rolling_ith(nav, lookback=100)
-
-# To inspect the auto-calculated TMAEG:
-auto_tmaeg = optimal_tmaeg(nav, lookback=100)
-print(f"Auto-TMAEG: {auto_tmaeg:.4f}")
-
-# Add as DataFrame columns for LSTM training
-bars['bull_epoch_density'] = features.bull_epoch_density
-bars['bear_epoch_density'] = features.bear_epoch_density
-bars['max_drawdown'] = features.max_drawdown
-
-# Ready for LSTM - all features bounded [0, 1]
-X = bars[['bull_epoch_density', 'bear_epoch_density', 'max_drawdown']].values
+  - rb25: Range bar 25 dbps (identification only)
+  - lb100: 100-bar lookback
+  - bull_ed: Bull epoch density
 ```
 
 ---
-
-## BiLSTM Integration
-
-All metrics produce bounded [0, 1] outputs for direct use in LSTM/BiLSTM models.
-
-### Normalization Transforms
-
-| Metric                | Raw Range  | Transform     | Output |
-| --------------------- | ---------- | ------------- | ------ |
-| Permutation Entropy   | [0, 1]     | None          | [0, 1] |
-| Sample Entropy        | [0, ∞)     | `1-exp(-x)`   | [0, 1) |
-| Shannon Entropy       | [0, log n] | `/log(n)`     | [0, 1] |
-| Omega Ratio           | [0, ∞)     | `Ω/(1+Ω)`     | [0, 1) |
-| Ulcer Index           | [0, 1]     | None          | [0, 1] |
-| Garman-Klass Vol      | [0, ∞)     | `tanh(10x)`   | [0, 1) |
-| Garman-Klass (stream) | [0, ∞)     | `EMA sigmoid` | (0, 1) |
-| Kaufman ER            | [0, 1]     | None          | [0, 1] |
-| Hurst Exponent        | [0, 1+]    | `soft_clamp`  | [0, 1] |
-| Fractal Dimension     | [1, 2]     | `D-1`         | [0, 1] |
-
-## Minimum Sample Requirements
-
-| Metric                    | Minimum | Rationale            |
-| ------------------------- | ------- | -------------------- |
-| Permutation Entropy (m=3) | 60      | 10 × 3!              |
-| Sample Entropy (m=2)      | 200     | Literature consensus |
-| Shannon Entropy (n=10)    | 100     | 10 × n_bins          |
-| Hurst Exponent            | 256     | DFA scale range      |
-
-## Adaptive Utilities
-
-The `adaptive.rs` module provides magic-number-free utilities:
-
-- `optimal_tmaeg(nav, lookback)` - Auto-calculate TMAEG from data volatility
-- `relative_epsilon(operand)` - Adaptive division guards
-- `OnlineNormalizer` - Welford algorithm with sigmoid
-- `GarmanKlassNormalizer` - EMA-based volatility normalization
-- `hurst_soft_clamp()` - Bounded output for Hurst
-- `adaptive_windows()` - Log-spaced window generation
-- `MinimumSamples` - Statistical power requirements
-
-## Rust Example
-
-```rust
-use trading_fitness_metrics::{
-    omega_ratio, permutation_entropy, hurst_exponent,
-    build_nav_from_closes, bull_ith,
-};
-
-// Build NAV from close prices
-let closes = vec![100.0, 102.0, 101.0, 105.0, 103.0, 108.0];
-let nav = build_nav_from_closes(&closes);
-
-// Compute returns for Omega ratio
-let returns: Vec<f64> = closes.windows(2)
-    .map(|w| (w[1] - w[0]) / w[0])
-    .collect();
-
-// All outputs are bounded [0, 1]
-let omega = omega_ratio(&returns, 0.0);
-
-// ITH analysis
-let ith_result = bull_ith(&nav, 0.05);
-println!("Epochs: {}", ith_result.num_of_epochs);
-```
 
 ## Architecture
 
@@ -437,38 +95,29 @@ println!("Epochs: {}", ith_result.num_of_epochs);
 packages/metrics-rust/
 ├── Cargo.toml
 ├── pyproject.toml          # Maturin build config
-├── CLAUDE.md
 ├── src/
-│   ├── lib.rs              # Module declarations + re-exports
-│   ├── adaptive.rs         # Adaptive utilities (foundation)
-│   ├── entropy.rs          # Permutation, Sample, Shannon
-│   ├── risk.rs             # Omega, Ulcer, GK Vol, Kaufman ER
-│   ├── fractal.rs          # Hurst, Fractal Dimension
-│   ├── ith.rs              # Bull/Bear ITH analysis
-│   ├── ith_rolling.rs      # Rolling window ITH features
-│   ├── ith_normalize.rs    # Bounded normalization utilities
-│   ├── nav.rs              # NAV construction
-│   ├── types.rs            # Result types
+│   ├── lib.rs              # Re-exports
+│   ├── adaptive.rs         # Magic-number-free utilities
+│   ├── entropy.rs          # Entropy metrics
+│   ├── risk.rs             # Risk metrics
+│   ├── fractal.rs          # Fractal metrics
+│   ├── ith.rs              # Core ITH analysis
+│   ├── ith_rolling.rs      # Rolling window features
+│   ├── ith_multiscale.rs   # Multi-scale (Arrow)
 │   └── python.rs           # PyO3 bindings
 └── python/
     └── trading_fitness_metrics/
-        ├── __init__.py     # Re-exports from _core
-        ├── __init__.pyi    # Type stubs
-        └── py.typed        # PEP 561 marker
+        ├── __init__.py
+        └── __init__.pyi    # Type stubs
 ```
 
-## Test Coverage
-
-134 tests covering:
-
-- Edge cases (empty, single point, constant series)
-- Boundary validation (outputs in declared ranges)
-- Known values (pre-computed references)
-- Property tests (monotonicity, scale invariance)
-- Real market data (BTCUSDT aggTrades, custom NAV)
+---
 
 ## Related Documentation
 
-- **Validation Report**: [VALIDATION_REPORT.md](VALIDATION_REPORT.md)
-- **Root Overview**: [← trading-fitness](../../CLAUDE.md)
-- **ITH Concept**: [docs/ITH.md](../../docs/ITH.md)
+| Document                                           | Purpose                |
+| -------------------------------------------------- | ---------------------- |
+| [docs/ITH.md](../../docs/ITH.md)                   | ITH methodology        |
+| [docs/forensic/E2E.md](../../docs/forensic/E2E.md) | Sparse wide table docs |
+| [VALIDATION_REPORT.md](VALIDATION_REPORT.md)       | Test coverage report   |
+| [ith-python](../ith-python/CLAUDE.md)              | Python consumer        |
