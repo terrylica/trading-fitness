@@ -24,6 +24,8 @@ uv run python -m ith_python.statistical_examination.runner \
 
 ## Module Structure
 
+### Core Analysis Modules
+
 | Module                   | Purpose                               | Method                              |
 | ------------------------ | ------------------------------------- | ----------------------------------- |
 | `runner.py`              | CLI + orchestration                   | -                                   |
@@ -35,6 +37,27 @@ uv run python -m ith_python.statistical_examination.runner \
 | `selection.py`           | Optimal feature subset                | Variance + correlation filters      |
 | `temporal.py`            | Time-series properties                | ACF, ADF stationarity               |
 | `schemas.py`             | Data validation                       | Pandera                             |
+
+### OOD-Robust Feature Selection Pipeline (2026-02-04)
+
+Principled pipeline for high-ACF financial time series: `mRMR -> dCor -> PCMCI -> Stability`
+
+| Module               | Phase | Purpose                         | Method                                        |
+| -------------------- | ----- | ------------------------------- | --------------------------------------------- |
+| `suppression.py`     | 0     | Filter known-unstable features  | Pattern matching (fnmatch)                    |
+| `mrmr.py`            | 1     | Fast redundancy-aware filtering | Minimum Redundancy Max Relevance              |
+| `dcor_filter.py`     | 2     | Nonlinear redundancy detection  | Distance Correlation (dCor=0 iff independent) |
+| `pcmci_filter.py`    | 3     | Causal discovery under ACF      | PCMCI via tigramite                           |
+| `block_bootstrap.py` | 4a    | ACF-robust importance stability | Circular Block Bootstrap + Politis-White      |
+| `walk_forward.py`    | 4b    | Temporal importance stability   | TimeSeriesSplit CV + CV filter                |
+| `_utils.py`          | -     | Shared utilities                | Feature column detection                      |
+| `scattering.py`      | Alt   | Automatic multi-scale features  | Wavelet scattering transform (kymatio fork)   |
+
+**Pipeline Flow**: 160 features -> 50 (mRMR) -> 30 (dCor) -> 15 (PCMCI) -> 10 (Stability)
+
+**Alternative**: Scattering transform sidesteps manual lookback selection by extracting features at ALL temporal scales automatically.
+
+**GitHub Issue**: [cc-skills#21](https://github.com/terrylica/cc-skills/issues/21)
 
 ---
 
@@ -102,15 +125,37 @@ jq 'select(.decision == "non_normal") | .feature' logs/ndjson/statistical_examin
 
 ```toml
 examination = ["polars", "scipy", "scikit-learn", "pandera"]
+feature-selection = ["mrmr-selection", "dcor", "tigramite", "recombinator", "tscv"]
+```
+
+---
+
+## Feature Selection Tasks (mise)
+
+```bash
+# Run full pipeline
+mise run feature-selection:pipeline
+
+# Run individual phases
+mise run feature-selection:mrmr        # Phase 1: 160 -> 50
+mise run feature-selection:dcor        # Phase 2: 50 -> 30
+mise run feature-selection:pcmci       # Phase 3: 30 -> 15
+mise run feature-selection:stability   # Phase 4: 15 -> 10
+
+# Run tests
+mise run feature-selection:test        # 64 pipeline tests
+mise run feature-selection:validate    # Full test suite (172 tests)
 ```
 
 ---
 
 ## Related Documentation
 
-| Document                                                       | Purpose            |
-| -------------------------------------------------------------- | ------------------ |
-| [ith-python CLAUDE.md](../../../CLAUDE.md)                     | Parent package     |
-| [docs/ITH.md](../../../../../../docs/ITH.md)                   | ITH methodology    |
-| [docs/LOGGING.md](../../../../../../docs/LOGGING.md)           | Telemetry contract |
-| [docs/forensic/E2E.md](../../../../../../docs/forensic/E2E.md) | E2E pipeline       |
+| Document                                                                                         | Purpose                      |
+| ------------------------------------------------------------------------------------------------ | ---------------------------- |
+| [ith-python CLAUDE.md](../../../CLAUDE.md)                                                       | Parent package               |
+| [docs/ITH.md](../../../../../../docs/ITH.md)                                                     | ITH methodology              |
+| [docs/LOGGING.md](../../../../../../docs/LOGGING.md)                                             | Telemetry contract           |
+| [docs/forensic/E2E.md](../../../../../../docs/forensic/E2E.md)                                   | E2E pipeline                 |
+| [docs/features/SUPPRESSION_REGISTRY.md](../../../../../../docs/features/SUPPRESSION_REGISTRY.md) | Feature suppression patterns |
+| [cc-skills#21](https://github.com/terrylica/cc-skills/issues/21)                                 | Feature selection research   |

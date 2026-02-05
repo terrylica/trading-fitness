@@ -1110,3 +1110,105 @@ df.write_parquet(output_path)
 print(f'Saved {len(df):,} rows to {output_path}')
 PYTHON_EOF
 """
+
+# =============================================================================
+# Feature Selection Pipeline (Principled OOD-Robust Selection)
+# Pipeline: mRMR (160→50) → dCor (50→30) → PCMCI (30→15) → Stability (15→10)
+# =============================================================================
+
+[tasks."feature-selection:mrmr"]
+description = "Phase 1: mRMR filter for fast redundancy-aware selection (160→50)"
+run = """
+uv sync --extra feature-selection
+uv run python -m ith_python.statistical_examination.mrmr
+"""
+sources = ["src/ith_python/statistical_examination/mrmr.py"]
+
+[tasks."feature-selection:dcor"]
+description = "Phase 2: dCor nonlinear redundancy detection (50→30)"
+depends = ["feature-selection:mrmr"]
+run = """
+uv sync --extra feature-selection
+uv run python -m ith_python.statistical_examination.dcor_filter
+"""
+sources = ["src/ith_python/statistical_examination/dcor_filter.py"]
+
+[tasks."feature-selection:pcmci"]
+description = "Phase 3: PCMCI causal discovery (30→15)"
+depends = ["feature-selection:dcor"]
+run = """
+uv sync --extra feature-selection
+uv run python -m ith_python.statistical_examination.pcmci_filter
+"""
+sources = ["src/ith_python/statistical_examination/pcmci_filter.py"]
+
+[tasks."feature-selection:bootstrap"]
+description = "Phase 4a: Block Bootstrap for ACF-robust importance"
+depends = ["feature-selection:pcmci"]
+run = """
+uv sync --extra feature-selection
+uv run python -m ith_python.statistical_examination.block_bootstrap
+"""
+sources = ["src/ith_python/statistical_examination/block_bootstrap.py"]
+
+[tasks."feature-selection:walk-forward"]
+description = "Phase 4b: Walk-Forward Importance Stability (15→10)"
+depends = ["feature-selection:bootstrap"]
+run = """
+uv sync --extra feature-selection
+uv run python -m ith_python.statistical_examination.walk_forward
+"""
+sources = ["src/ith_python/statistical_examination/walk_forward.py"]
+
+[tasks."feature-selection:stability"]
+description = "Phase 4: Combined stability validation (Bootstrap + Walk-Forward)"
+depends = ["feature-selection:bootstrap", "feature-selection:walk-forward"]
+run = """
+echo "Phase 4 stability validation complete"
+echo "  - Block Bootstrap: ACF-robust importance with Politis-White block length"
+echo "  - Walk-Forward: TimeSeriesSplit CV with CV-based stability filtering"
+"""
+
+[tasks."feature-selection:pipeline"]
+description = "Full OOD-robust feature selection pipeline (160→10)"
+depends = ["feature-selection:stability"]
+run = """
+echo ""
+echo "════════════════════════════════════════════════════════════════════════════════"
+echo "Feature Selection Pipeline Complete"
+echo "════════════════════════════════════════════════════════════════════════════════"
+echo ""
+echo "  Phase 1 (mRMR):           160 → 50 features"
+echo "  Phase 2 (dCor):            50 → 30 features"
+echo "  Phase 3 (PCMCI):           30 → 15 features"
+echo "  Phase 4 (Stability):       15 → 10 features"
+echo ""
+echo "Methods:"
+echo "  - mRMR: Minimum Redundancy Maximum Relevance (mutual information)"
+echo "  - dCor: Distance Correlation (parameter-free nonlinear dependence)"
+echo "  - PCMCI: Peter-Clark Momentary Conditional Independence (causal discovery)"
+echo "  - Bootstrap: Circular Block Bootstrap with Politis-White optimal length"
+echo "  - Walk-Forward: TimeSeriesSplit CV with coefficient of variation filter"
+echo ""
+echo "Reference: GitHub Issue cc-skills#21"
+echo "════════════════════════════════════════════════════════════════════════════════"
+"""
+
+[tasks."feature-selection:test"]
+description = "Run feature selection pipeline tests"
+run = """
+uv sync --extra feature-selection
+uv run pytest tests/test_statistical_examination/test_mrmr.py \
+    tests/test_statistical_examination/test_dcor.py \
+    tests/test_statistical_examination/test_pcmci.py \
+    tests/test_statistical_examination/test_block_bootstrap.py \
+    tests/test_statistical_examination/test_walk_forward.py \
+    -v
+"""
+
+[tasks."feature-selection:validate"]
+description = "Validate feature selection pipeline (all 160 tests)"
+run = """
+uv sync --extra feature-selection --extra examination
+uv run pytest tests/test_statistical_examination/ -v --tb=short
+"""

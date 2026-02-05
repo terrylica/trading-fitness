@@ -501,6 +501,44 @@ def run_from_parquet(
             "n_cols": len(df.columns),
         }).info("DataFrame loaded")
 
+    # If Long Format (SSoT), pivot to Wide Format for analysis
+    if "feature" in df.columns and "value" in df.columns:
+        # Filter to ITH features only (exclude clasp_* etc.) and valid rows
+        # Cast Categorical to String for str operations
+        feat_str = pl.col("feature").cast(pl.Utf8)
+        ith_df = df.filter(
+            feat_str.str.starts_with("bull_") | feat_str.str.starts_with("bear_") | feat_str.str.starts_with("max_")
+        ).filter(pl.col("threshold_dbps") > 0)
+
+        # Build canonical column name: ith_rb{threshold}_lb{lookback}_{feature}
+        ith_df = ith_df.with_columns(
+            pl.concat_str([
+                pl.lit("ith_rb"),
+                pl.col("threshold_dbps").cast(pl.Utf8),
+                pl.lit("_lb"),
+                pl.col("lookback").cast(pl.Utf8),
+                pl.lit("_"),
+                pl.col("feature"),
+            ]).alias("col_name")
+        )
+
+        # Pivot: one row per bar_index, one column per feature
+        # Use first symbol for now (per-symbol analysis)
+        first_symbol = ith_df["symbol"].unique().sort()[0]
+        ith_df = ith_df.filter(pl.col("symbol") == first_symbol)
+
+        df = ith_df.pivot(
+            on="col_name",
+            index="bar_index",
+            values="value",
+        ).sort("bar_index")
+
+        if verbose:
+            logger.bind(context={
+                "symbol": first_symbol,
+                "wide_shape": list(df.shape),
+            }).info("Pivoted Long → Wide format")
+
     # Validate
     is_valid, errors = validate_ith_features(df)
     if not is_valid:

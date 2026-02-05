@@ -52,7 +52,11 @@ uv run python -m ith_python.ith   # Run Bull ITH analysis
 
 | Submodule                  | CLAUDE.md                                             |
 | -------------------------- | ----------------------------------------------------- |
+| `features/`                | [→](src/ith_python/features/CLAUDE.md)                |
+| `storage/`                 | [→](src/ith_python/storage/CLAUDE.md)                 |
+| `telemetry/`               | [→](src/ith_python/telemetry/CLAUDE.md)               |
 | `statistical_examination/` | [→](src/ith_python/statistical_examination/CLAUDE.md) |
+| `provenance/`              | [→](src/ith_python/provenance/CLAUDE.md) _(Part B)_   |
 
 ---
 

@@ -13,6 +13,7 @@ dependencies = [
     "rich>=14.2.0",
     "scipy>=1.17.0",
     "trading-fitness-metrics",
+    "xxhash>=3.5.0",  # Fast hashing for tick data fingerprinting (provenance module)
 ]
 
 [project.optional-dependencies]
@@ -32,6 +33,15 @@ examination = [
     "pandera[polars]>=0.23.1",
     # Time series segmentation for regime detection
     "claspy>=0.1.3.1",
+]
+feature-selection = [
+    "dcor>=0.6",
+    "kymatio",
+    "mrmr-selection>=0.2.8",
+    "recombinator>=0.0.6",
+    "tigramite>=5.2",
+    "tsbootstrap",
+    "tscv>=0.1.3",
 ]
 
 [dependency-groups]
@@ -53,6 +63,8 @@ build-backend = "hatchling.build"
 packages = ["src/ith_python"]
 
 [tool.uv.sources]
-rangebar = { git = "https://github.com/terrylica/rangebar-py", tag = "v11.0.0" }  # SSoT-OK
+rangebar = { git = "https://github.com/terrylica/rangebar-py", tag = "v12.5.2" }  # SSoT-OK
 trading-fitness-metrics = { path = "../metrics-rust" }
 claspy = { path = "../../../../fork-tools/claspy" }
+tsbootstrap = { path = "../../../../fork-tools/tsbootstrap" }
+kymatio = { path = "../../../../fork-tools/kymatio" }

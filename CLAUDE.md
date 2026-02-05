@@ -114,6 +114,38 @@ NAV Series → Rolling Window → Count Epochs → Normalize [0,1] → BiLSTM Fe
 
 **Full glossary**: [docs/features/REGISTRY.md](docs/features/REGISTRY.md)
 
+### Feature Selection & Statistical Methods
+
+Methods for principled feature selection under high autocorrelation (ACF=0.94) and OOD robustness requirements.
+
+| Term                                               | Acronym   | Definition                                                                                                                                            |
+| -------------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Autocorrelation Function**                       | ACF       | Correlation of a time series with lagged versions of itself. ACF=0.94 means extreme temporal dependence.                                              |
+| **Effective Sample Size**                          | ESS       | True independent information in autocorrelated data: `N_eff ≈ N × (1-ACF)/(1+ACF)`. For ACF=0.94, N_eff ≈ 0.03×N.                                     |
+| **Out-of-Distribution**                            | OOD       | Data from different regime than training (e.g., bull vs bear market). OOD robustness = generalization across regimes.                                 |
+| **False Discovery Rate**                           | FDR       | Expected proportion of false positives among selected features. FDR=0.2 means 20% of selections may be spurious.                                      |
+| **Peter-Clark Momentary Conditional Independence** | PCMCI     | Gold standard causal discovery for time series. Explicitly handles autocorrelation via MCI test. Package: `tigramite`.                                |
+| **Hilbert-Schmidt Independence Criterion**         | HSIC      | Kernel-based dependence measure capturing all nonlinear relationships. HSIC Lasso: feature selection with redundancy penalty. Package: `pyHSICLasso`. |
+| **Minimum Redundancy Maximum Relevance**           | mRMR      | Fast filter selecting features with high target relevance and low inter-feature redundancy. Package: `mrmr-selection`.                                |
+| **Distance Correlation**                           | dCor      | Parameter-free nonlinear dependence measure. dCor=0 iff independent (unlike Pearson r). Package: `dcor`.                                              |
+| **Time Series Knockoffs Inference**                | TSKI      | FDR-controlled feature selection using block sampling for temporal data. Package: `knockpy`.                                                          |
+| **Invariant Risk Minimization**                    | IRM       | Framework selecting features with stable relationships across environments/regimes.                                                                   |
+| **Sparse Invariant Risk Minimization**             | SparseIRM | IRM with sparsity constraint for simultaneous feature selection and OOD robustness.                                                                   |
+| **Scattering Transform**                           | -         | Multi-scale wavelet transform extracting features at ALL temporal scales automatically. Sidesteps lookback selection. Package: `kymatio`.             |
+| **Random Convolutional Kernel Transform**          | ROCKET    | Generates thousands of random convolutional features with varying receptive fields. Package: `sktime`.                                                |
+| **Sequential Feature Detachment**                  | SFD       | Pruning algorithm for ROCKET selecting minimal predictive kernel set. Package: `detach_rocket`.                                                       |
+| **Block Bootstrap**                                | -         | Resampling preserving temporal structure by shuffling contiguous blocks. Required for ACF>0.5 data. Package: `tsbootstrap`.                           |
+| **Circular Block Bootstrap**                       | CBB       | Block bootstrap variant wrapping around series end for stability selection.                                                                           |
+| **Walk-Forward Importance Stability**              | -         | Validation method: compute feature importance per fold, select features with low CV across folds.                                                     |
+| **TimeSeriesSplit**                                | -         | Cross-validation respecting temporal order. NEVER use random k-fold on time series.                                                                   |
+| **Participation Ratio**                            | PR        | Effective dimensionality from PCA eigenvalues: `PR = (Σλ)² / Σλ²`. PR=10 means 10 effective dimensions.                                               |
+| **Variance Inflation Factor**                      | VIF       | Multicollinearity measure. VIF>10 indicates high redundancy. Use Ridge-regularized VIF for stability.                                                 |
+| **Feature Suppression Registry**                   | -         | Config pattern: keep features but mark as suppressed (don't use) with reason and date. Like deprecation for features.                                 |
+| **Anchor Regression**                              | -         | OOD method using exogenous anchors (regime labels) for distributional robustness. Single hyperparameter γ.                                            |
+| **Change Point Detection**                         | CPD       | Algorithms (PELT, BinSeg) detecting regime boundaries for environment definition. Package: `ruptures`.                                                |
+
+**Research**: [docs/research/external/](docs/research/external/) | GitHub Issue: [cc-skills#21](https://github.com/terrylica/cc-skills/issues/21)
+
 ### Warmup Handling
 
 Each lookback window requires `(lookback - 1)` bars before producing valid values.
@@ -215,6 +247,11 @@ uv run python scripts/precompute_ouroboros_year.py --workers 4
 ```
 
 **ClickHouse table**: `rangebar_cache.range_bars_ouroboros_year`
+
+**Exchange session columns** (opt-in via `include_exchange_sessions=True`):
+`exchange_session_sydney`, `exchange_session_tokyo`, `exchange_session_london`, `exchange_session_newyork`
+
+**Schema migrations**: `scripts/migrations/` (run on bigblack with `clickhouse-client --multiquery`)
 
 ### Common Commands
 
