@@ -1,3 +1,16 @@
+# [3.1.0](https://github.com/terrylica/trading-fitness/compare/v3.0.1...v3.1.0) (2026-02-05)
+
+
+### Bug Fixes
+
+* **precompute:** remove OOM workarounds after rangebar-py upgrade ([3aba367](https://github.com/terrylica/trading-fitness/commit/3aba367ee68db7146ceb314546bead79caa71b0c))
+* **tests:** update tests for 1000 dbps minimum crypto threshold ([4ef0509](https://github.com/terrylica/trading-fitness/commit/4ef050931f0c318ef05746abb836b83f293ed6c8))
+
+
+### Features
+
+* **statistical-examination:** add OOD-robust feature selection pipeline ([ea8b246](https://github.com/terrylica/trading-fitness/commit/ea8b246ed43b6e9d6fcc69bcc091b0bd4c9f6f71)), closes [hi#ACF](https://github.com/hi/issues/ACF) [cc-skills#21](https://github.com/cc-skills/issues/21)
+
 ## [3.0.1](https://github.com/terrylica/trading-fitness/compare/v3.0.0...v3.0.1) (2026-01-29)
 
 # [3.0.0](https://github.com/terrylica/trading-fitness/compare/v2.6.0...v3.0.0) (2026-01-27)
