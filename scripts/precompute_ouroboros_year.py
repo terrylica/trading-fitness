@@ -5,12 +5,23 @@ Precompute Ouroboros year-based range bars into ClickHouse.
 Builds range bars with yearly reset boundaries (Jan 1 00:00 UTC).
 Bars crossing year boundaries are marked as orphans.
 
+IMPORTANT: Run with RANGEBAR_NO_MEMORY_GUARD=1 to prevent RLIMIT_AS errors:
+    RANGEBAR_NO_MEMORY_GUARD=1 uv run python ../../scripts/precompute_ouroboros_year.py
+
 Usage:
     # On bigblack:
     cd ~/eon/trading-fitness/packages/ith-python
-    uv run python ../../scripts/precompute_ouroboros_year.py [--workers N] [--dry-run]
+    RANGEBAR_NO_MEMORY_GUARD=1 uv run python ../../scripts/precompute_ouroboros_year.py [--workers N] [--dry-run]
 
 Target table: rangebar_cache.range_bars_ouroboros_year
+
+Anchor columns (incremental feature support):
+    - ouroboros_segment_* : Segment identity (e.g., "2024_01" for year 2024)
+    - source_tick_* : Tick data fingerprint for validation
+    - feature_computation_versions_json : Track which features are computed
+    - bar_position_* : Bar position within segment
+
+ADR: docs/adr/2026-01-29-rangebar-py-upgrade.md
 """
 
 from __future__ import annotations
@@ -20,19 +31,25 @@ import multiprocessing as mp
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    pass
-
+# =============================================================================
+# Memory Configuration (before importing rangebar)
+# =============================================================================
+# Disable auto memory guard - we'll handle per-worker limits manually.
+# Root cause: rangebar's auto_memory_guard() sets RLIMIT_AS at import time.
+# With multiprocessing fork, child processes inherit this limit and can't
+# allocate more than the total limit / n_workers effectively.
+# By disabling the auto guard, Polars/Rust allocator works normally.
+os.environ["RANGEBAR_NO_MEMORY_GUARD"] = "1"
 
 # =============================================================================
 # Configuration
 # =============================================================================
 
 # Symbols and thresholds to precompute
+# NOTE: Only thresholds >= 1000 dbps are economically viable (overcome trading costs)
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
-THRESHOLDS = [25, 50, 100, 250]  # decimal basis points
+THRESHOLDS = [1000, 2500, 5000, 10000]  # decimal basis points (1000 dbps = 10%)
 
 # Date range: 4+ years (2022-01-01 to present)
 # Binance data availability starts ~2019 for major pairs
@@ -41,6 +58,9 @@ END_DATE = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
 
 # Ouroboros mode
 OUROBOROS_MODE = "year"
+
+# Inter-bar feature lookback (v11.6.0) - number of trades before each bar
+INTER_BAR_LOOKBACK = 100
 
 # ClickHouse target table
 TARGET_TABLE = "rangebar_cache.range_bars_ouroboros_year"
@@ -108,7 +128,26 @@ def run_precompute_job(args: tuple[str, int, str, str, bool]) -> JobResult:
         import hashlib
 
         import clickhouse_connect
-        from rangebar import get_range_bars
+        from rangebar import get_range_bars, populate_cache_resumable
+
+        from ith_python.provenance import (
+            FEATURE_VERSIONS,
+            FeatureComputationVersions,
+        )
+
+        # NOTE: Memory guard disabled via RANGEBAR_NO_MEMORY_GUARD=1 at top of script.
+        # RLIMIT_AS is incompatible with Polars/Rust mmap-based allocations.
+        # Let the system OOM killer handle extreme cases instead.
+
+        # v12.2.0+: Long-range date protection requires cache population first
+        # For date ranges > 30 days, we must populate the cache before get_range_bars()
+        print(f"[PID {worker_id}] Populating cache for {symbol} @ {threshold}dbps ({start_date} to {end_date})", flush=True)
+        populate_cache_resumable(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            threshold_decimal_bps=threshold,
+        )
 
         # Fetch range bars with Ouroboros year mode
         # This forces fresh construction with year boundaries
@@ -120,9 +159,11 @@ def run_precompute_job(args: tuple[str, int, str, str, bool]) -> JobResult:
             threshold_decimal_bps=threshold,
             ouroboros=OUROBOROS_MODE,
             include_orphaned_bars=True,  # Include orphans so we can mark them
-            use_cache=True,  # Use tick cache
-            fetch_if_missing=True,
+            use_cache=True,  # Use tick + range bar cache
+            fetch_if_missing=False,  # v12.2.0+: Cache already populated above
             include_microstructure=True,
+            include_exchange_sessions=True,  # v11.2.0: 4 session columns
+            inter_bar_lookback_count=INTER_BAR_LOOKBACK,  # v11.6.0: 16 inter-bar features
         )
 
         if df is None or len(df) == 0:
@@ -183,9 +224,39 @@ def run_precompute_job(args: tuple[str, int, str, str, bool]) -> JobResult:
         ).hexdigest()[:16]
 
         df["cache_key"] = cache_key
-        df["rangebar_version"] = "11.0.0"
+        df["rangebar_version"] = "12.5.2"
         df["source_start_ts"] = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp() * 1000)
         df["source_end_ts"] = int(datetime.strptime(end_date, "%Y-%m-%d").timestamp() * 1000)
+
+        # =================================================================
+        # Anchor columns for incremental feature addition
+        # =================================================================
+        # Segment identity - use year as segment ID (e.g., "2024")
+        segment_id = str(year)
+        segment_start_ms = int(datetime(year, 1, 1).timestamp() * 1000)
+        segment_end_ms = int(datetime(year, 12, 31, 23, 59, 59).timestamp() * 1000)
+
+        df["ouroboros_segment_id"] = segment_id
+        df["ouroboros_segment_start_timestamp_ms"] = segment_start_ms
+        df["ouroboros_segment_end_timestamp_ms"] = segment_end_ms
+
+        # Bar position within segment
+        df["bar_position_index_in_segment"] = range(len(df))
+        df["bar_position_is_segment_first"] = [1] + [0] * (len(df) - 1) if len(df) > 0 else []
+        df["bar_position_is_segment_last"] = [0] * (len(df) - 1) + [1] if len(df) > 0 else []
+
+        # Source tick fingerprint - requires loading tick data
+        # Note: For now, set placeholder values. Full fingerprinting requires
+        # access to raw tick data which rangebar caches internally.
+        # TODO: Add tick fingerprint computation when rangebar exposes tick data
+        df["source_tick_xxhash64_checksum"] = 0  # Placeholder
+        df["source_tick_row_count"] = 0  # Placeholder
+        df["source_tick_first_timestamp_ms"] = df["timestamp_ms"].iloc[0] if len(df) > 0 else 0
+        df["source_tick_last_timestamp_ms"] = df["timestamp_ms"].iloc[-1] if len(df) > 0 else 0
+
+        # Feature computation versions - track what's computed
+        versions = FeatureComputationVersions(versions=FEATURE_VERSIONS.copy())
+        df["feature_computation_versions_json"] = versions.to_json()
 
         # Drop the original timestamp column (not needed for insert)
         df = df.drop(columns=["timestamp"])
@@ -207,14 +278,38 @@ def run_precompute_job(args: tuple[str, int, str, str, bool]) -> JobResult:
             "duration_us", "ofi", "vwap_close_deviation",
             "price_impact", "kyle_lambda_proxy", "trade_intensity",
             "volume_per_trade", "aggression_ratio", "aggregation_density",
-            "turnover_imbalance", "ouroboros_mode", "is_orphan",
+            "turnover_imbalance",
+            "exchange_session_sydney", "exchange_session_tokyo",
+            "exchange_session_london", "exchange_session_newyork",
+            # v11.6.0: 16 inter-bar features (lookback window before bar opens)
+            "lookback_trade_count", "lookback_ofi", "lookback_duration_us",
+            "lookback_intensity", "lookback_vwap_raw", "lookback_vwap_position",
+            "lookback_count_imbalance", "lookback_kyle_lambda", "lookback_burstiness",
+            "lookback_volume_skew", "lookback_volume_kurt", "lookback_price_range",
+            "lookback_kaufman_er", "lookback_garman_klass_vol", "lookback_hurst",
+            "lookback_permutation_entropy",
+            "ouroboros_mode", "is_orphan",
+            # Anchor columns for incremental feature addition
+            "ouroboros_segment_id", "ouroboros_segment_start_timestamp_ms",
+            "ouroboros_segment_end_timestamp_ms",
+            "source_tick_xxhash64_checksum", "source_tick_row_count",
+            "source_tick_first_timestamp_ms", "source_tick_last_timestamp_ms",
+            "feature_computation_versions_json",
+            "bar_position_index_in_segment", "bar_position_is_segment_first",
+            "bar_position_is_segment_last",
             "cache_key", "rangebar_version",  # ouroboros_boundary uses DEFAULT
             "source_start_ts", "source_end_ts",
         ]
 
         # Filter to columns that exist in dataframe
         insert_columns = [c for c in table_columns if c in df.columns]
-        df_insert = df[insert_columns]
+        df_insert = df[insert_columns].copy()
+
+        # Fill NaN/None values for Float64 columns (ClickHouse doesn't accept None)
+        # lookback_* columns can be None for bars without enough preceding trades
+        float_cols = [c for c in df_insert.columns if c.startswith("lookback_")]
+        for col in float_cols:
+            df_insert[col] = df_insert[col].fillna(0.0)
 
         client.insert_df(
             table="range_bars_ouroboros_year",
@@ -252,7 +347,7 @@ def run_precompute_job(args: tuple[str, int, str, str, bool]) -> JobResult:
 
 def main():
     parser = argparse.ArgumentParser(description="Precompute Ouroboros year-based range bars")
-    parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
+    parser.add_argument("--workers", type=int, default=2, help="Number of parallel workers")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without executing")
     parser.add_argument("--symbols", type=str, help="Comma-separated symbols (default: all)")
     parser.add_argument("--thresholds", type=str, help="Comma-separated thresholds (default: all)")
@@ -296,10 +391,10 @@ def main():
             print(f"  ... and {len(jobs) - 10} more")
         return
 
-    # Run jobs in parallel
     import time
     overall_start = time.time()
 
+    # v11.6.0: per-segment tick loading prevents OOM (~3GB per segment vs ~70GB before)
     with mp.Pool(processes=args.workers) as pool:
         results = pool.map(run_precompute_job, jobs)
 
