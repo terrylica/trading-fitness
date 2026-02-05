@@ -20,7 +20,7 @@ import pytest
 
 # Check if rangebar is available (for conditional skipping)
 try:
-    import rangebar
+    import rangebar  # noqa: F401 - used to check availability
     HAS_RANGEBAR = True
 except ImportError:
     HAS_RANGEBAR = False
@@ -57,7 +57,7 @@ class TestRollingIthWithRealRangeBars:
             bars = get_n_range_bars(
                 symbol="BTCUSDT",
                 n_bars=500,
-                threshold_decimal_bps=25,  # 25 bps
+                threshold_decimal_bps=1000,  # 1000 dbps minimum for crypto
             )
         except ConnectionError as exc:
             pytest.fail(
@@ -102,7 +102,14 @@ class TestRollingIthWithRealRangeBars:
         """
         from trading_fitness_metrics import compute_rolling_ith
 
-        features = compute_rolling_ith(real_nav_from_rangebar, lookback=100)
+        # Use dynamic lookback based on available data (max 50% of data length)
+        nav_len = len(real_nav_from_rangebar)
+        lookback = min(100, max(10, nav_len // 2))
+
+        if nav_len < 20:
+            pytest.skip(f"Insufficient data for test: {nav_len} bars (need >= 20)")
+
+        features = compute_rolling_ith(real_nav_from_rangebar, lookback=lookback)
 
         feature_names = [
             "bull_epoch_density", "bear_epoch_density",

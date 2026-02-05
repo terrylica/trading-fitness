@@ -28,7 +28,7 @@ rangebar = pytest.importorskip(
     reason="rangebar not installed (install with: uv sync --extra validation)"
 )
 
-from trading_fitness_metrics import compute_rolling_ith, optimal_tmaeg
+from trading_fitness_metrics import compute_rolling_ith, optimal_tmaeg  # noqa: E402
 
 
 # =============================================================================
@@ -68,7 +68,7 @@ def btcusdt_range_bars():
         "BTCUSDT",
         CRYPTO_DATE_RANGE[0],
         CRYPTO_DATE_RANGE[1],
-        threshold_decimal_bps=250,  # 25bps default
+        threshold_decimal_bps=1000,  # 1000 dbps minimum for crypto
         use_cache=False,  # Skip ClickHouse cache for testing
     )
     print(f"  Fetched {len(df)} bars")
