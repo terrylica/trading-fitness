@@ -2,7 +2,54 @@
 
 > Quick context for continuing work on trading-fitness.
 
-## Last Session: 2026-01-28
+## Last Session: 2026-01-29
+
+### Completed Work
+
+**rangebar-py Upgrade to Latest** <!-- SSoT-OK: external version references in session log -->
+
+Full upgrade cycle with workaround removal.
+
+| Item | Status |
+| ---- | ------ |
+| Version pin in pyproject.toml | Updated to latest tag |
+| `uv lock` + `uv sync` | Passed |
+| Test suite (328 tests) | Passed (5 timeout on integration tests — expected without bigblack) |
+| ADR documenting API diff | Updated: `docs/adr/2026-01-29-rangebar-py-upgrade.md` |
+| ClickHouse migration SQL | Written: `scripts/migrations/001_add_exchange_session_columns.sql` |
+| Precompute script simplified | Removed OOM/TypeError workarounds, uses upstream per-segment loading |
+| Resumable workaround script | Deleted: `scripts/precompute_ouroboros_resumable.py` (no longer needed) |
+| GitHub issues filed | #48 (JSONL tracing), #49 (resource mgmt), #50 (bool TypeError), #51 (OOM) |
+| Statistical examination modules | Verified: 12 modules + 2 analysis modules intact |
+| CLAUDE.md updated | Exchange session columns + migration path documented |
+
+**Key upstream fixes:**
+
+- Issue #50: Bool→int cast in CH cache write (was causing silent worker crashes)
+- Issue #51: Per-segment tick loading — 70GB → 3GB peak memory for Ouroboros year
+- Issue #49: Pre-flight memory estimation, MEM guards, `max_memory_gb` parameter
+- Issue #46: Bar open deferral fix — ALL cached bars potentially stale
+
+**Workarounds removed:**
+
+- Bool→int cast block in precompute script
+- `--sequential` subprocess isolation mode
+- `TypeError` in except clause
+- Entire `precompute_ouroboros_resumable.py` script
+
+### Pending (requires bigblack access)
+
+- Kill old resumable recompute process on bigblack
+- Sync updated code to bigblack, `uv lock && uv sync`
+- Truncate `range_bars_ouroboros_year` (stale partial data from workaround runs)
+- Restart recompute: `precompute_ouroboros_year.py --workers 2`
+- Assess legacy `range_bars` table (268M bars) staleness
+- Run statistical examination on recomputed data
+- Assess exchange session columns as ITH features
+
+---
+
+## Previous Session: 2026-01-28
 
 ### Completed Work
 

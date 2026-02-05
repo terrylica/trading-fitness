@@ -55,3 +55,4 @@ packages/ith-python/results.html
 .precompute_log
 .precompute_pid
 .python-version
+.claude/ru-config.json
