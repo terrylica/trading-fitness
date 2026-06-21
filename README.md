@@ -81,7 +81,7 @@ mise run affected         # List affected packages
 mise run generate-types   # Generate types from JSON Schema
 
 # Release workflow
-mise run release:preflight  # Validate prerequisites (clean tree, GH_TOKEN, main branch)
+mise run release:preflight  # Validate prerequisites (clean tree, gh auth (via gh-token-for-repo), main branch)
 mise run release:version    # Run semantic-release (updates CHANGELOG, tags)
 mise run release:full       # Complete workflow (preflight + version)
 ```

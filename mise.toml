@@ -9,8 +9,6 @@
 #   packages/shared-types/mise.toml: Type generation
 
 [env]
-GH_TOKEN = "{{ read_file(path=env.HOME ~ '/.claude/.secrets/gh-token-terrylica') | trim }}"
-GITHUB_TOKEN = "{{ read_file(path=env.HOME ~ '/.claude/.secrets/gh-token-terrylica') | trim }}"
 LOG_DIR = "{{config_root}}/logs"
 ENV = "dev"
 UV_PYTHON = "python3.13"
