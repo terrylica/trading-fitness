@@ -98,7 +98,7 @@ impl MultiscaleIthFeatures {
     pub fn all_bounded(&self) -> bool {
         self.columns.values().all(|arr| {
             arr.iter()
-                .all(|&v| v.is_nan() || (v >= 0.0 && v <= 1.0))
+                .all(|&v| v.is_nan() || (0.0..=1.0).contains(&v))
         })
     }
 }
