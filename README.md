@@ -118,6 +118,7 @@ trading-fitness/
 
 - [Architecture](docs/ARCHITECTURE.md) — System design and data flow
 - [ITH Methodology](docs/ITH.md) — Investment Time Horizon explained
+- 🔴 [The null ITH does not have](docs/research/2026-08-24-the-null-ith-does-not-have.md) — what the epoch count scores on a **no-edge** equity curve, measured by running the shipped implementation. **Read before quoting an epoch count**: the null differs by two orders of magnitude between the `mdd` and `fixed` hurdle modes, the `mdd` hurdle degenerates as MDD → 0, and the "8–11 epochs" band below is a window around Sharpe ≈ 2 rather than a quality floor.
 - [Logging Contract](docs/LOGGING.md) — NDJSON structured logging
 
 ## ITH Algorithm Specification

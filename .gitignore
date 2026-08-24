@@ -56,3 +56,7 @@ packages/ith-python/results.html
 .precompute_pid
 .python-version
 .claude/ru-config.json
+
+# Git worktrees (worktree-per-branch policy). Targeted, NOT `.claude/*`,
+# because .claude/skills/ is tracked.
+.claude/worktrees/
