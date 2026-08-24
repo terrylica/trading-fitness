@@ -42,7 +42,7 @@ impl MetricsResult {
 
         values
             .iter()
-            .all(|&v| v.is_finite() && v >= 0.0 && v <= 1.0)
+            .all(|&v| v.is_finite() && (0.0..=1.0).contains(&v))
     }
 
     /// Check if any metric is NaN.

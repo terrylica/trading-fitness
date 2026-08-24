@@ -80,10 +80,20 @@
 
 ### Research & Compliance
 
-| Document                         | Purpose                     |
-| -------------------------------- | --------------------------- |
-| [docs/SRED.md](docs/SRED.md)     | CRA tax credit tracking     |
-| [docs/research/](docs/research/) | Statistical method research |
+| Document                                                                                                            | Purpose                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [docs/SRED.md](docs/SRED.md)                                                                                        | CRA tax credit tracking                                                                                                   |
+| [docs/research/](docs/research/)                                                                                    | Statistical method research                                                                                               |
+| 🔴 [docs/research/2026-08-24-the-null-ith-does-not-have.md](docs/research/2026-08-24-the-null-ith-does-not-have.md) | **The Brownian null for the ITH epoch count** — measured by running the shipped code. Read before quoting an epoch count. |
+
+> 🔴 **Before reporting an ITH epoch count, state the hurdle mode.** On a zero-drift equity curve
+> the shipped bull-ITH count averages **0.58–1.79** and clears the documented 8-epoch bar **at most
+> 1.2%** of the time under the default `mdd` hurdle — but **24.6%** of the time under the selectable
+> `fixed 0.05` hurdle at 40% vol. The same number means different things. And the `mdd` hurdle
+> **degenerates as MDD → 0**: a monotone +0.1%/bar curve scores **999 of 999 bars**, because the
+> hurdle is zero. _ITH is safe against noise and unsafe against smoothness._ The documented "8–11
+> epochs" band is a **window around Sharpe ≈ 2**, not a floor — at Sharpe 4 it is hit 0.3% of the
+> time, because a better strategy overshoots it.
 
 ---
 
