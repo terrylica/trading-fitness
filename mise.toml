@@ -190,9 +190,34 @@ if pgrep -f "clickhouse server" > /dev/null; then
 fi
 
 echo "Starting ClickHouse server..."
-CLICKHOUSE_BIN=$(ls ~/.local/share/mise/installs/clickhouse/*/bin/clickhouse 2>/dev/null | head -1)
+# Resolve the clickhouse binary, PATH first.
+#
+# This used to glob ~/.local/share/mise/installs/clickhouse/*/bin/clickhouse. mise was
+# retired machine-wide (proto is the only toolchain manager), so that tree stopped
+# existing, the glob matched nothing, and this task failed on every invocation -- while
+# telling the reader to fix it with `mise install clickhouse`, a command that cannot work
+# here. ClickHouse is installed at /opt/homebrew/bin/clickhouse and always was; only the
+# lookup was wrong. Same defect fixed in gapless-crypto-clickhouse and
+# exness-data-preprocess on 2026-08-25.
+#
+# PATH first is tool-agnostic -- proto shims, Homebrew and system installs all feed PATH,
+# so this needs no edit the next time the toolchain manager changes. The mise glob is kept
+# LAST only for a machine that still has one; do not promote it back.
+CLICKHOUSE_BIN=""
+if command -v clickhouse > /dev/null 2>&1; then
+    CLICKHOUSE_BIN="$(command -v clickhouse)"
+else
+    for c in "$HOME/.proto/shims/clickhouse" /opt/homebrew/bin/clickhouse /usr/local/bin/clickhouse; do
+        if [ -x "$c" ]; then CLICKHOUSE_BIN="$c"; break; fi
+    done
+    if [ -z "$CLICKHOUSE_BIN" ]; then
+        CLICKHOUSE_BIN=$(ls ~/.local/share/mise/installs/clickhouse/*/bin/clickhouse 2>/dev/null | head -1)
+    fi
+fi
+
 if [ -z "$CLICKHOUSE_BIN" ]; then
-    echo "ERROR: ClickHouse not installed. Run: mise install clickhouse"
+    echo "ERROR: clickhouse binary not found on PATH or at any known location."
+    echo "       Install it (e.g. 'brew install clickhouse') or put it on PATH."
     exit 1
 fi
 

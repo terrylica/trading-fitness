@@ -204,7 +204,34 @@ def empty_csv_file(temp_dir: Path) -> Path:
 
 
 def _find_clickhouse_binary() -> Path | None:
-    """Find ClickHouse binary installed via mise."""
+    """Find the ClickHouse binary, PATH first and toolchain-agnostic.
+
+    This used to look ONLY under ~/.local/share/mise/installs/clickhouse. mise was retired
+    machine-wide (proto is the only toolchain manager), so that tree stopped existing and
+    this returned None forever -- meaning every ClickHouse-dependent test here SILENTLY
+    SKIPPED while ClickHouse was installed at /opt/homebrew/bin/clickhouse the whole time.
+
+    A silent skip is worse than a crash: the suite stays green over a domain that has
+    quietly become empty. The sibling repo gapless-crypto-clickhouse had the identical
+    lookup but fail-hard semantics, so there it surfaced as 12 loud errors and was fixed
+    the same day; here it produced no signal at all.
+
+    PATH first is the tool-agnostic answer -- proto shims, Homebrew and system installs all
+    feed PATH, so this needs no edit the next time the toolchain manager changes. The mise
+    tree is searched LAST, only so a machine that still has one keeps working.
+    """
+    found = shutil.which("clickhouse")
+    if found:
+        return Path(found)
+
+    for candidate in (
+        Path.home() / ".proto/shims/clickhouse",
+        Path("/opt/homebrew/bin/clickhouse"),
+        Path("/usr/local/bin/clickhouse"),
+    ):
+        if candidate.is_file():
+            return candidate
+
     mise_installs = Path.home() / ".local/share/mise/installs/clickhouse"
     if not mise_installs.exists():
         return None
