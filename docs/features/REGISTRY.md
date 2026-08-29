@@ -58,7 +58,7 @@ Generated via `metrics-rust` with configurable thresholds and lookbacks.
 
 ### Redundancy Analysis (2026-01-23)
 
-From statistical examination on suresh.csv (2,726 NAV observations):
+From statistical examination on sample_account.csv (2,726 NAV observations):
 
 | Metric                   | Value | Interpretation                 |
 | ------------------------ | ----- | ------------------------------ |

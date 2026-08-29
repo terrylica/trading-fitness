@@ -123,7 +123,7 @@ fn test_real_btcusdt_aggtrades_metrics() {
 #[test]
 fn test_real_nav_data_ith_analysis() {
     // Load real NAV data from trading-fitness
-    let csv_path = std::env::var("HOME").unwrap() + "/eon/trading-fitness/data/nav_data_custom/suresh.csv";
+    let csv_path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/nav_data_custom/sample_account.csv").to_string();
     let csv_content = std::fs::read_to_string(&csv_path)
         .expect("Failed to read NAV CSV");
 

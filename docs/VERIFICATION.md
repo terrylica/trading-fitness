@@ -13,7 +13,7 @@
 | V2: Config Files         | PASS             | mise.toml, .mcp.json, sgconfig.yml, .gitignore verified      |
 | V3: ith-python Package   | PASS             | Module imports work, pyproject.toml fixed                    |
 | V4: Placeholder Packages | PASS             | core-rust: cargo check OK, core-bun: bun OK                  |
-| V5: Data Migration       | PASS             | suresh.csv: 97KB/2727 lines, artifacts: 155 files            |
+| V5: Data Migration       | PASS             | sample_account.csv: 97KB/2727 lines, artifacts: 155 files            |
 | V6: Documentation        | PASS             | CLAUDE.md, ARCHITECTURE.md, ITH.md, LOGGING.md exist         |
 | V7: E2E Test             | PASS             | `mise run analyze` completed successfully                    |
 | V8: Git & Archives       | PASS             | 2 commits, archive at ~/archive/ith-fitness-backup-20260115/ |
@@ -83,8 +83,8 @@
 ### V5: Data Migration
 
 ```bash
-# suresh.csv:
-# Command: wc -l data/nav_data_custom/suresh.csv
+# sample_account.csv:
+# Command: wc -l data/nav_data_custom/sample_account.csv
 # Result: 2727 lines, 97089 bytes
 
 # Artifacts:
@@ -108,7 +108,7 @@
 # Result:
 # - Project directories initialized
 # - 15 existing qualified results processed
-# - 1 custom CSV processed (suresh.csv)
+# - 1 custom CSV processed (sample_account.csv)
 # - Results saved to artifacts/results.html
 # - Browser opened successfully
 ```

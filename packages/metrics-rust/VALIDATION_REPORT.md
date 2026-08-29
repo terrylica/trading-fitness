@@ -18,7 +18,7 @@ The `trading-fitness-metrics` crate implements all 9 price-only metrics with bou
 | Unit tests pass for each metric  | ✅     | 76 unit tests pass                              |
 | All outputs bounded [0, 1]       | ✅     | Real data tests verify bounds                   |
 | Works with Crypto (Binance) data | ✅     | BTCUSDT aggTrades test passes                   |
-| Works with real NAV data         | ✅     | suresh.csv NAV test passes                      |
+| Works with real NAV data         | ✅     | sample_account.csv NAV test passes                      |
 | ITH Bull/Bear epochs computed    | ✅     | Bull: 1 epoch, Bear: 0 epochs on real data      |
 
 **Evidence Command**:
@@ -71,7 +71,7 @@ cargo test -p trading-fitness-metrics 2>&1 | grep "test result"
 | Test                      | Status | Data Source                                                         |
 | ------------------------- | ------ | ------------------------------------------------------------------- |
 | BTCUSDT aggTrades metrics | ✅     | `~/eon/rangebar-py/tests/fixtures/BTCUSDT-aggTrades-sample-10k.csv` |
-| NAV ITH analysis          | ✅     | `data/nav_data_custom/suresh.csv`                                   |
+| NAV ITH analysis          | ✅     | `data/nav_data_custom/sample_account.csv`                                   |
 | Garman-Klass OHLC         | ✅     | Derived from BTCUSDT prices                                         |
 
 **Real Data Results**:

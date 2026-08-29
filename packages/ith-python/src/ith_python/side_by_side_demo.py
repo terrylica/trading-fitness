@@ -4,7 +4,7 @@ This generates HTML output for BOTH implementations using the exact same
 NAV data, proving they produce identical results.
 
 Uses the ORIGINAL NAV generation method from:
-/Users/terryli/eon/legal-docs-source/candidates/MingXu/ith.py
+(an external reference implementation, path redacted)
 
 Key difference from rust_ith_demo.py:
 - Original uses ADDITIVE returns: np.cumsum(walk)
@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import webbrowser
 from datetime import datetime
-from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np

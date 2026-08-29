@@ -226,12 +226,12 @@ CASE_7_CRASH_DCB = {
 }
 
 # ============================================================
-# CASE 8: Real Data Sample (from suresh.csv volatility pattern)
+# CASE 8: Real Data Sample (from sample_account.csv volatility pattern)
 # ============================================================
 # Mimics actual PnL swings: 0.5-0.6% daily volatility
 CASE_8_REALISTIC = {
     "name": "realistic_volatility",
-    "description": "Mimics real trading data volatility from suresh.csv",
+    "description": "Mimics real trading data volatility from sample_account.csv",
     "nav": np.array(
         [
             1000000.0,  # Day 0: $1M start
