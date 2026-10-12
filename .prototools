@@ -1,0 +1,5 @@
+# proto — repo-local toolchain versions. uv owns Python (.python-version); node runs semantic-release;
+# bun runs packages/core-bun. Rust comes from rustup's stable default.
+uv = "latest"
+node = "22"
+bun = "latest"

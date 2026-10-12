@@ -21,7 +21,7 @@
 | ------------- | ------------------- | --------------------- |
 | Storage       | Limited (256GB SSD) | Abundant (2TB+ NVMe)  |
 | CPU for fetch | 14 cores            | 32 cores              |
-| ClickHouse    | mise-installed      | Native installation   |
+| ClickHouse    | Homebrew (on PATH)  | Native installation   |
 | Network       | Home connection     | Data center proximity |
 
 ## Components

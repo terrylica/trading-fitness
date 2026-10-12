@@ -60,7 +60,7 @@ def compute_features(
     except ImportError as e:
         msg = (
             "trading_fitness_metrics not installed. "
-            "Run: mise run develop:metrics-rust"
+            "Run: moon run ith-python:bindings"
         )
         raise ImportError(msg) from e
 

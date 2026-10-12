@@ -217,22 +217,6 @@ const logger = pino({
 logger.info({ component: "core_bun", trace_id }, "Processing started");
 ```
 
-## mise Tasks for Forensic Analysis
-
-```bash
-# Full forensic analysis with NDJSON telemetry
-mise run forensic:full
-
-# Audit hypothesis test results
-mise run forensic:hypothesis-audit
-
-# View recent logs
-mise run forensic:view-logs
-
-# Telemetry event summary
-mise run forensic:telemetry-summary
-```
-
 ## Querying Logs
 
 ### jq Examples

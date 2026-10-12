@@ -133,14 +133,14 @@ def find_project_root() -> Path:
     """Find the trading-fitness project root directory.
 
     Detection strategy (in order):
-    1. TRADING_FITNESS_ROOT environment variable (set by mise)
+    1. TRADING_FITNESS_ROOT environment variable (optional override)
     2. Look for Cargo.toml (monorepo root marker)
     3. Fall back to cwd
 
     Returns:
         Path to project root directory.
     """
-    # Strategy 1: Environment variable (set by mise)
+    # Strategy 1: Environment variable (optional override)
     env_root = os.environ.get("TRADING_FITNESS_ROOT")
     if env_root:
         return Path(env_root)

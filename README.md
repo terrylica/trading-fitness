@@ -24,16 +24,15 @@ data/nav_data_custom/*.csv  ──▶  [Analysis Engine]  ──▶  artifacts/r
 ## Quick Start
 
 ```bash
-# Prerequisites: mise (https://mise.jdx.dev)
-brew install mise
+# Prerequisites: proto (https://moonrepo.dev/proto) and moon (https://moonrepo.dev/moon)
 
 # Clone and setup
 git clone https://github.com/terrylica/trading-fitness.git
 cd trading-fitness
-mise install
+proto install
 
 # Run ITH analysis
-mise run analyze
+moon run ith-python:analyze
 
 # View results
 open artifacts/results.html
@@ -74,16 +73,16 @@ Date,NAV
 ## Tasks
 
 ```bash
-mise run analyze          # Run ITH analysis
-mise run test             # Run all tests (146 total)
-mise run lint             # Lint all packages
-mise run affected         # List affected packages
-mise run generate-types   # Generate types from JSON Schema
+moon run ith-python:analyze   # Run ITH analysis (bull, then bear)
+moon run :check               # Whole gate: Python lint/collect/tests, Rust fmt/clippy/tests, schemas
+moon run ith-python:test      # Python tests
+moon run metrics-rust:test    # Rust tests (nextest + doctests)
+moon ci                       # Only what changed
+./scripts/generate-types.sh all   # Generate types from JSON Schema
 
-# Release workflow
-mise run release:preflight  # Validate prerequisites (clean tree, gh auth (via gh-token-for-repo), main branch)
-mise run release:version    # Run semantic-release (updates CHANGELOG, tags)
-mise run release:full       # Complete workflow (preflight + version)
+# Release workflow (scripts/release.sh mints GH_TOKEN via gh-token-for-repo)
+moon run repo:release-dry     # Preview semantic-release
+moon run repo:release         # Run semantic-release (updates CHANGELOG, tags)
 ```
 
 ## Development

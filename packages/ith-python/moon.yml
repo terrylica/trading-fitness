@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+# ith-python — ITH analysis. Tasks run from this directory.
+layer: 'library'
+language: 'python'
+
+tasks:
+  test:
+    script: 'uv run pytest'
+    inputs: ['src/**/*', 'tests/**/*', 'pyproject.toml']
+  lint:
+    script: 'uv run ruff check'
+    inputs: ['src/**/*', 'tests/**/*', 'pyproject.toml']
+  collect:
+    script: 'bash ../../scripts/check-test-collection.sh'
+    inputs: ['src/**/*', 'tests/**/*', 'pyproject.toml']
+  validate-symmetric:
+    script: 'bash ../../scripts/validate-symmetric.sh'
+    options: { cache: false }
+  config-check:
+    script: 'uv run python -m ith_python.config.forensic --validate'
+    options: { cache: false }
+  bindings:
+    script: 'uv sync --reinstall-package trading-fitness-metrics'
+    options: { cache: false }
+  run-bull:
+    script: 'uv run python -m ith_python.ith'
+    options: { cache: false, runInCI: false }
+  run-bear:
+    script: 'uv run python -m ith_python.bear_ith'
+    options: { cache: false, runInCI: false }
+  analyze:
+    deps: ['~:run-bull', '~:run-bear']
+    script: "echo 'Results: artifacts/bull_results.html, artifacts/bear_results.html'"
+    options: { cache: false, runDepsInParallel: false, runInCI: false }
+  check:
+    deps: ['~:lint', '~:collect', '~:test', '~:validate-symmetric']
+    script: "echo 'ith-python:check passed'"
+    options: { cache: false }

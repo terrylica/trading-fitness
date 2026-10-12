@@ -60,3 +60,7 @@ packages/ith-python/results.html
 # Git worktrees (worktree-per-branch policy). Targeted, NOT `.claude/*`,
 # because .claude/skills/ is tracked.
 .claude/worktrees/
+
+# moon (task runner) local cache
+.moon/cache/
+.moon/docker/

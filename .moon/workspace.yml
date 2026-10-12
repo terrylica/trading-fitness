@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/workspace.json
+# moon runs this repo's tasks; proto (.prototools) pins the tools. `moon run :check` is the whole gate.
+projects:
+  repo: '.'                              # release
+  ith-python: 'packages/ith-python'      # ITH analysis (Python)
+  metrics-rust: 'packages/metrics-rust'  # trading-fitness-metrics crate (PyO3 bindings for ith-python)
+  shared-types: 'packages/shared-types'  # JSON Schemas
+
+vcs:
+  client: 'git'
+  defaultBranch: 'main'

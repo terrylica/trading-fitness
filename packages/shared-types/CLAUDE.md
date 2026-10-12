@@ -42,16 +42,7 @@ Schemas will be consumed by:
 
 ## Code Generation
 
-Use mise tasks to generate types from schemas:
-
-```bash
-mise run generate-types           # Generate all targets
-mise run generate-types:python    # Generate Python pydantic models
-mise run generate-types:typescript # Generate TypeScript zod schemas
-mise run generate-types:rust      # Generate Rust serde structs
-```
-
-Or run the script directly:
+Generate types from schemas with the script (`moon run shared-types:check` only checks that every schema parses):
 
 ```bash
 ./scripts/generate-types.sh all

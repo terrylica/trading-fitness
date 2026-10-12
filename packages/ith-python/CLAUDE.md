@@ -23,11 +23,11 @@ uv run python -m ith_python.ith   # Run Bull ITH analysis
 └──────────────────┘    └──────────────────┘    └──────────────────┘
 ```
 
-| Layer | Module      | Purpose                      | Upgrade Command             |
-| ----- | ----------- | ---------------------------- | --------------------------- |
-| 1     | `features/` | ITH feature computation      | `mise run upgrade:features` |
-| 2     | `storage/`  | Long Format SSoT + views     | `mise run upgrade:views`    |
-| 3     | `analysis/` | Statistical eval + telemetry | `mise run upgrade:analysis` |
+| Layer | Module      | Purpose                      |
+| ----- | ----------- | ---------------------------- |
+| 1     | `features/` | ITH feature computation      |
+| 2     | `storage/`  | Long Format SSoT + views     |
+| 3     | `analysis/` | Statistical eval + telemetry |
 
 **Plan**: [docs/plans/2026-01-25-multi-view-feature-architecture-plan.md](../../docs/plans/2026-01-25-multi-view-feature-architecture-plan.md)
 

@@ -24,7 +24,7 @@ packages/
 
 | Layer           | Technology | Purpose                                     |
 | --------------- | ---------- | ------------------------------------------- |
-| Runtime mgmt    | mise       | Version control for Python, Rust, Node, Bun |
+| Runtime mgmt    | proto      | Tool versions (.prototools); uv owns Python |
 | Python pkg      | uv         | Fast Python package management              |
 | Code search     | ast-grep   | Structural code search                      |
 | Semantic search | ck         | Code knowledge search                       |

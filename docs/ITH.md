@@ -27,7 +27,7 @@ Time periods where the strategy's cumulative returns exceed the TMAEG threshold.
 Place CSV files with Date and NAV columns in `data/nav_data_custom/`, then run:
 
 ```bash
-mise run analyze
+moon run ith-python:analyze
 ```
 
 Results appear in `artifacts/results.html`.

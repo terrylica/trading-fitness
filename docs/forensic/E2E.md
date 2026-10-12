@@ -4,16 +4,6 @@
 
 **[Back to CLAUDE.md](../../CLAUDE.md)**
 
-## Quick Start
-
-```bash
-mise run forensic:e2e              # Full pipeline with ClickHouse data
-mise run forensic:hypothesis-audit # Audit hypothesis test results
-mise run forensic:report           # Generate report from latest run
-```
-
----
-
 ## Pipeline Overview
 
 ### New Architecture (Multi-View)
@@ -28,14 +18,6 @@ mise run forensic:report           # Generate report from latest run
 └──────────────────┘    └──────────────────┘    └──────────────────┘
 ```
 
-**Full Pipeline**: `mise run forensic:pipeline`
-
-**Independent Upgrades**:
-
-- `mise run upgrade:features` - Rebuild features only
-- `mise run upgrade:views` - Regenerate views only
-- `mise run upgrade:analysis` - Re-run analysis only
-
 **Plan**: [docs/plans/2026-01-25-multi-view-feature-architecture-plan.md](../plans/2026-01-25-multi-view-feature-architecture-plan.md)
 
 ### Legacy Pipeline
@@ -47,8 +29,6 @@ ClickHouse → rangebar-py → NAV → Rust compute_multiscale_ith → Polars �
                                         ↓
                           NDJSON Telemetry + summary.json
 ```
-
-**Legacy**: `mise run forensic:e2e`
 
 ---
 

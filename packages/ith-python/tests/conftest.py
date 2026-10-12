@@ -360,5 +360,5 @@ def require_clickhouse(clickhouse_server):
             ...
     """
     if clickhouse_server is None:
-        pytest.skip("ClickHouse not available (not installed via mise)")
+        pytest.skip("ClickHouse not available (no clickhouse binary found)")
     return clickhouse_server

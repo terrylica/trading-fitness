@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+# JSON Schemas shared across packages.
+layer: 'configuration'
+
+tasks:
+  check:
+    script: >-
+      uv run --no-project python -c "import json, pathlib;
+      [json.loads(p.read_text()) for p in sorted(pathlib.Path('schemas').glob('*.json'))];
+      print('schemas parse')"
+    inputs: ['schemas/*.json']

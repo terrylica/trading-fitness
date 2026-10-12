@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
+# Repo-level tasks. Release runs semantic-release with a GH_TOKEN minted per run (scripts/release.sh).
+layer: 'tool'
+
+tasks:
+  release-dry:
+    script: 'bash scripts/release.sh --dry-run'
+    options: { cache: false, interactive: true, runInCI: false }
+  release:
+    script: 'bash scripts/release.sh'
+    options: { cache: false, interactive: true, runInCI: false }

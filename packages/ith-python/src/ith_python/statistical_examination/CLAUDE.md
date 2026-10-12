@@ -130,25 +130,6 @@ feature-selection = ["mrmr-selection", "dcor", "tigramite", "recombinator", "tsc
 
 ---
 
-## Feature Selection Tasks (mise)
-
-```bash
-# Run full pipeline
-mise run feature-selection:pipeline
-
-# Run individual phases
-mise run feature-selection:mrmr        # Phase 1: 160 -> 50
-mise run feature-selection:dcor        # Phase 2: 50 -> 30
-mise run feature-selection:pcmci       # Phase 3: 30 -> 15
-mise run feature-selection:stability   # Phase 4: 15 -> 10
-
-# Run tests
-mise run feature-selection:test        # 64 pipeline tests
-mise run feature-selection:validate    # Full test suite (172 tests)
-```
-
----
-
 ## Related Documentation
 
 | Document                                                                                         | Purpose                      |

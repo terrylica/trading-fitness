@@ -17,14 +17,14 @@
 
 ## Quick Reference
 
-| Action                | Command                             |
-| --------------------- | ----------------------------------- |
-| Full pipeline         | `mise run forensic:full-pipeline`   |
-| Data preflight        | `mise run preflight:rangebar-cache` |
-| Precompute range bars | `mise run data:precompute-parallel` |
-| Run tests             | `mise run test`                     |
-| Pre-release check     | `mise run validate:pre-release`     |
-| Symmetric dogfooding  | `mise run validate:symmetric`       |
+| Action               | Command                                   |
+| -------------------- | ----------------------------------------- |
+| Whole gate           | `moon run :check`                         |
+| Python tests         | `moon run ith-python:test`                |
+| Rust tests           | `moon run metrics-rust:test`              |
+| ITH analysis         | `moon run ith-python:analyze`             |
+| Symmetric dogfooding | `moon run ith-python:validate-symmetric`  |
+| Release preview      | `moon run repo:release-dry`               |
 
 ---
 
@@ -166,8 +166,6 @@ Each lookback window requires `(lookback - 1)` bars before producing valid value
 | lb100    | bar_index = 99  |
 | lb500    | bar_index = 499 |
 
-**Preflight**: `mise run preflight:warmup`
-
 ---
 
 ## Development
@@ -180,24 +178,25 @@ cd packages/ith-python && uv sync && uv run pytest
 
 # Rust (metrics-rust)
 cargo nextest run -p trading-fitness-metrics
-mise run develop:metrics-rust    # Build + install Python bindings
+moon run ith-python:bindings     # Rebuild + install Python bindings (uv sync --reinstall-package trading-fitness-metrics)
 ```
 
-### mise Task Orchestration
+### moon Task Orchestration
 
-Uses [jdx/mise](https://mise.jdx.dev/) for DAG-based task orchestration.
+moon runs the tasks; proto pins the tools (uv owns Python via `.python-version`).
 
 ```
-mise.toml              # Root: [tools] + [env] + orchestration
-.mise.local.toml       # Secrets (gitignored)
-packages/*/mise.toml   # Package-specific tasks
+.prototools            # uv, node, bun versions
+.moon/workspace.yml    # Projects: repo, ith-python, metrics-rust, shared-types
+moon.yml               # repo: release, release-dry
+packages/*/moon.yml    # Package tasks (test, lint, check, ...)
 ```
 
 **Key patterns**:
 
-- `depends = [...]` for task dependencies
-- `sources`/`outputs` for incremental builds
-- `mise watch <task>` for live reload
+- `moon run :check` runs every project's gate; `moon query tasks` lists every task
+- `deps: [...]` for task dependencies
+- `inputs` make tasks cached and affected-aware
 
 ### Git Workflow
 
