@@ -1,11 +1,12 @@
 # yaml-language-server: $schema=https://moonrepo.dev/schemas/project.json
-# ith-python — ITH analysis. Tasks run from this directory.
+# ith-python — ITH analysis. Tasks run from this directory. Tests need the optional extras
+# (feature-selection, examination), so `test` installs all of them.
 layer: 'library'
 language: 'python'
 
 tasks:
   test:
-    script: 'uv run pytest'
+    script: 'uv run --all-extras pytest'
     inputs: ['src/**/*', 'tests/**/*', 'pyproject.toml']
   lint:
     script: 'uv run ruff check'

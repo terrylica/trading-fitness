@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -214,7 +214,7 @@ wheels = [
 [[package]]
 name = "claspy"
 version = "0.2.7"
-source = { directory = "../../../../fork-tools/claspy" }
+source = { git = "https://github.com/terrylica/claspy?rev=6dbdd464f5da4ca3717a5b565a785e9077cd94ae#6dbdd464f5da4ca3717a5b565a785e9077cd94ae" }
 dependencies = [
     { name = "daproli" },
     { name = "matplotlib" },
@@ -224,18 +224,6 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "statsmodels" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "daproli", specifier = ">=0.22" },
-    { name = "matplotlib", specifier = ">=3.3.2" },
-    { name = "numba", specifier = ">=0.55" },
-    { name = "numpy", specifier = ">=1.21.0" },
-    { name = "pandas", specifier = ">=2.0.0" },
-    { name = "scikit-learn", specifier = ">=1.0.0" },
-    { name = "scipy", specifier = ">=1.9.0" },
-    { name = "statsmodels", specifier = ">=0.12.1" },
 ]
 
 [[package]]
@@ -589,10 +577,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "claspy", marker = "extra == 'examination'", directory = "../../../../fork-tools/claspy" },
+    { name = "claspy", marker = "extra == 'examination'", git = "https://github.com/terrylica/claspy?rev=6dbdd464f5da4ca3717a5b565a785e9077cd94ae" },
     { name = "dcor", marker = "extra == 'feature-selection'", specifier = ">=0.6" },
     { name = "kaleido", specifier = ">=1.2.0" },
-    { name = "kymatio", marker = "extra == 'feature-selection'", directory = "../../../../fork-tools/kymatio" },
+    { name = "kymatio", marker = "extra == 'feature-selection'", git = "https://github.com/terrylica/kymatio?rev=de12953961fdefad146235d1c260afe9fe25189d" },
     { name = "lightgbm", marker = "extra == 'examination'", specifier = ">=4.6.0" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "mrmr-selection", marker = "extra == 'feature-selection'", specifier = ">=0.2.8" },
@@ -727,17 +715,8 @@ wheels = [
 [[package]]
 name = "kymatio"
 version = "0.4.0.dev0"
-source = { directory = "../../../../fork-tools/kymatio" }
+source = { git = "https://github.com/terrylica/kymatio?rev=de12953961fdefad146235d1c260afe9fe25189d#de12953961fdefad146235d1c260afe9fe25189d" }
 dependencies = [
-    { name = "appdirs" },
-    { name = "configparser" },
-    { name = "numpy" },
-    { name = "packaging" },
-    { name = "scipy" },
-]
-
-[package.metadata]
-requires-dist = [
     { name = "appdirs" },
     { name = "configparser" },
     { name = "numpy" },

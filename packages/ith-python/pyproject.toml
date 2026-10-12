@@ -65,6 +65,6 @@ packages = ["src/ith_python"]
 [tool.uv.sources]
 rangebar = { git = "https://github.com/terrylica/rangebar-py", tag = "v12.5.2" }  # SSoT-OK
 trading-fitness-metrics = { path = "../metrics-rust" }
-claspy = { path = "../../../../fork-tools/claspy" }
+claspy = { git = "https://github.com/terrylica/claspy", rev = "6dbdd464f5da4ca3717a5b565a785e9077cd94ae" }
 tsbootstrap = { path = "../../../../fork-tools/tsbootstrap" }
-kymatio = { path = "../../../../fork-tools/kymatio" }
+kymatio = { git = "https://github.com/terrylica/kymatio", rev = "de12953961fdefad146235d1c260afe9fe25189d" }
