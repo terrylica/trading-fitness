@@ -113,14 +113,14 @@ NAV Series → Rolling Window → Count Epochs → Normalize [0,1] → BiLSTM Fe
 
 ### Terminology
 
-| Term       | Definition                                                |
-| ---------- | --------------------------------------------------------- |
-| **ITH**    | Investment Time Horizon - epoch count metric              |
-| **TMAEG**  | Target Maximum Acceptable Excess Gain (auto-calculated)   |
-| **NAV**    | Net Asset Value - normalized price series starting at 1.0 |
-| **Epoch**  | Period where excess gain exceeds TMAEG                    |
-| **dbps**   | Decimal basis points (1 dbps = 0.0001 = 0.01%)            |
-| **Warmup** | Initial bars with NaN (max_lookback - 1 bars)             |
+| Term       | Definition                                                                               |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| **ITH**    | Epoch count metric measuring threshold crossings                                         |
+| **TMAEG**  | Auto-calculated drawdown-based hurdle for epoch counting                                 |
+| **NAV**    | Normalized price series starting at 1.0                                                  |
+| **Epoch**  | Period where excess gain exceeds TMAEG                                                   |
+| **dbps**   | 1 dbps = 0.00001 = 0.001%. Example: 250 dbps = 0.25%. **All threshold values use dbps.** |
+| **Warmup** | Initial bars with NaN (max_lookback - 1 bars)                                            |
 
 **Full glossary**: [docs/features/REGISTRY.md](docs/features/REGISTRY.md)
 

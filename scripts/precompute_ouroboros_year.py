@@ -49,7 +49,7 @@ os.environ["RANGEBAR_NO_MEMORY_GUARD"] = "1"
 # Symbols and thresholds to precompute
 # NOTE: Only thresholds >= 1000 dbps are economically viable (overcome trading costs)
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
-THRESHOLDS = [1000, 2500, 5000, 10000]  # decimal basis points (1000 dbps = 10%)
+THRESHOLDS = [1000, 2500, 5000, 10000]  # decimal basis points (1000 dbps = 1%)
 
 # Date range: 4+ years (2022-01-01 to present)
 # Binance data availability starts ~2019 for major pairs

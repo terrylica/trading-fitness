@@ -6,6 +6,8 @@ ITH metrics for each range bar based on the trades within it.
 This validates that ITH features produce sensible values at the
 granularity of individual range bars using real market data.
 
+Issue #2: https://github.com/terrylica/trading-fitness/issues/2
+
 Run with:
     uv run python -m ith_python.audit_real_aggtrades
 """
@@ -48,12 +50,12 @@ FEATURE_NAMES = [
 SAMPLE_AGGTRADES = Path.home() / "eon" / "rangebar-py" / "sample_binance_aggTrades.csv"
 
 # Range bar thresholds to test (in decimal basis points)
-# 1 dbps = 0.01% = 0.0001
+# 1 dbps = 0.001% = 0.00001
 THRESHOLD_CONFIGS = [
-    {"threshold_dbps": 10, "lookback": 10, "desc": "10 dbps (0.1%)"},
-    {"threshold_dbps": 25, "lookback": 20, "desc": "25 dbps (0.25%)"},
-    {"threshold_dbps": 50, "lookback": 20, "desc": "50 dbps (0.5%)"},
-    {"threshold_dbps": 100, "lookback": 20, "desc": "100 dbps (1%)"},
+    {"threshold_dbps": 10, "lookback": 10, "desc": "10 dbps (0.01%)"},
+    {"threshold_dbps": 25, "lookback": 20, "desc": "25 dbps (0.025%)"},
+    {"threshold_dbps": 50, "lookback": 20, "desc": "50 dbps (0.05%)"},
+    {"threshold_dbps": 100, "lookback": 20, "desc": "100 dbps (0.1%)"},
 ]
 
 
@@ -67,12 +69,12 @@ def construct_range_bars_python(df: pd.DataFrame, threshold_dbps: int) -> pd.Dat
     Args:
         df: DataFrame with 'price', 'quantity', 'timestamp' columns
         threshold_dbps: Range bar threshold in decimal basis points
-                       (10 dbps = 0.1% = 0.001)
+                       (10 dbps = 0.01% = 0.0001)
 
     Returns:
         DataFrame with OHLCV range bars
     """
-    threshold_pct = threshold_dbps / 10000.0  # Convert to decimal
+    threshold_pct = threshold_dbps / 100000.0  # Convert to decimal
 
     prices = df["price"].values
     quantities = df["quantity"].values
